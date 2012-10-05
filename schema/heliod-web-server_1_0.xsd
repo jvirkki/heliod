@@ -1,0 +1,4732 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:appinfo="http://www.sun.com/software/webserver/7.0/server/appinfo"
+           elementFormDefault="qualified">
+
+<xs:annotation>
+  <xs:documentation>
+ 
+  DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+ 
+  Copyright 2008 Sun Microsystems, Inc. All rights reserved.
+ 
+  THE BSD LICENSE
+ 
+  Redistribution and use in source and binary forms, with or without 
+  modification, are permitted provided that the following conditions are met:
+ 
+  Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer. 
+  Redistributions in binary form must reproduce the above copyright notice, 
+  this list of conditions and the following disclaimer in the documentation 
+  and/or other materials provided with the distribution. 
+ 
+  Neither the name of the  nor the names of its contributors may be
+  used to endorse or promote products derived from this software without 
+  specific prior written permission. 
+ 
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+  OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
+  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+  </xs:documentation>
+</xs:annotation>
+
+<xs:element name="server">
+  <xs:annotation>
+    <xs:documentation>
+      The &lt;server> element is the root element of all server.xml documents.
+    </xs:documentation>
+  </xs:annotation>
+
+  <xs:complexType>
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="default-auth-db-name" type="nameType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:appinfo>
+            <appinfo:implicit>default</appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="default-auth-realm-name" type="nameType" minOccurs="0" maxOccurs="1"/>
+
+      <xs:element name="default-soap-auth-provider-name" type="nameType" minOccurs="0" maxOccurs="1"/>
+
+      <xs:element name="cluster" type="clusterType" minOccurs="0" maxOccurs="1">
+        <xs:key name="instance-hostKey">
+          <xs:annotation>
+            <xs:documentation>
+              Each &lt;instance> must specify a unique host.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="instance"/>
+          <xs:field xpath="host"/>
+        </xs:key>
+
+        <xs:keyref name="local-hostKeyref" refer="instance-hostKey">
+          <xs:annotation>
+            <xs:documentation>
+              &lt;local-host> must refer to an existing &lt;instance>.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="."/>
+          <xs:field xpath="local-host"/>
+        </xs:keyref>
+      </xs:element>
+
+      <xs:element name="log" type="logType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;log> element is omitted, logging settings are configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="platform" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;platform> element is omitted, the server runs in 32-bit mode.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit>32</appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:integer">
+            <xs:enumeration value="32"/>
+            <xs:enumeration value="64"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+          
+      <xs:element name="user" type="userType" minOccurs="0" maxOccurs="1"/>
+
+      <xs:element name="temp-path" type="pathType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;temp-path> element is omitted, a platform-dependent temporary directory is used.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="variable" type="variableType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="localization" type="localizationType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;localization> element is omitted, localization settings are configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="http" type="httpType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;http> element is omitted, HTTP protocol settings are configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="config-file" type="pathPatternType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="keep-alive" type="keep-aliveType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;keep-alive> element is omitted, the HTTP keep-alive subsystem is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="thread-pool" type="thread-poolType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;thread-pool> element is omitted, thread pool settings are configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="pkcs11" type="pkcs11Type" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;pkcs11> element is omitted and one or more &lt;ssl> elements are enabled or if one or more &lt;soap-auth-provider> elements are defined, PKCS #11 support is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit if-xpath="(/server/soap-auth-provider|/server/http-listener/ssl|/server/auth-db/property[name = 'client-cert-nickname'])[not(ancestor-or-self::*[enabled = 'false'])]"/>
+            <appinfo:implicit>
+              <enabled>false</enabled>
+            </appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+
+        <xs:unique name="pkcs11-token-nameUnique">
+          <xs:annotation>
+            <xs:documentation>
+              Each &lt;token> must specify a unique name.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="token"/>
+          <xs:field xpath="name"/>
+        </xs:unique>
+      </xs:element>
+
+      <xs:element name="stats" type="statsType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;stats> element is omitted, statistics collection is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="cgi" type="cgiType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;cgi> element is omitted, CGI subsystem settings are configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="qos" type="qosType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;qos> element is omitted and one or more &lt;qos-limits> elements are enabled, QOS features are implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit if-xpath="(/server/qos-limits|/server/virtual-server/qos-limits)[not(ancestor-or-self::*[enabled = 'false'])]"/>
+            <appinfo:implicit>
+              <enabled>false</enabled>
+            </appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="dns" type="dnsType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;dns> element is omitted, DNS lookups are disabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit>
+              <enabled>false</enabled>
+            </appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="dns-cache" type="dns-cacheType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;dns-cache> element is omitted, the DNS cache is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="file-cache" type="file-cacheType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;file-cache> element is omitted, the file cache is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="acl-cache" type="acl-cacheType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;acl-cache> element is omitted, the ACL cache is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="ssl-session-cache" type="ssl-session-cacheType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;ssl-session-cache> element is omitted, the SSL/TLS session cache is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="access-log-buffer" type="access-log-bufferType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;access-log-buffer> element is omitted, access log buffering is implicitly enabled.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="dav" type="davType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;dav> element is omitted, WebDAV is configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="snmp" type="snmpType" minOccurs="0" maxOccurs="1"/>
+
+      <xs:element name="qos-limits" type="qos-limitsType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;qos-limits> element is omitted, no QOS limits are enforced.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit>
+              <enabled>false</enabled>
+            </appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="audit-accesses" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:appinfo>
+            <appinfo:implicit>false</appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="jvm" type="jvmType" minOccurs="0" maxOccurs="1"/>
+
+      <xs:element name="servlet-container" type="servlet-containerType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            If the &lt;servlet-container> element is omitted and the JVM is enabled, the Servlet container is configured implicitly.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit if-xpath="/server/jvm[not(ancestor-or-self::*[enabled = 'false'])]"/>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="lifecycle-module" type="lifecycle-moduleType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="custom-resource" type="custom-resourceType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="external-jndi-resource" type="external-jndi-resourceType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="jdbc-resource" type="jdbc-resourceType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="mail-resource" type="mail-resourceType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="soap-auth-provider" type="soap-auth-providerType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="auth-realm" type="auth-realmType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="auth-db" type="auth-dbType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="acl-file" type="pathType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="krb5-keytab-file" type="pathType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            Sets the value of the KRB5_KTNAME environment variable.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit>keytab</appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
+      <xs:element name="mime-file" type="pathType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="access-log" type="access-logType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="http-listener" type="http-listenerType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element name="virtual-server" type="virtual-serverType" minOccurs="0" maxOccurs="unbounded">
+        <xs:unique name="virtual-server-variable-nameUnique">
+          <xs:annotation>
+            <xs:documentation>
+              Each &lt;variable> must specify a unique name.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="variable"/>
+          <xs:field xpath="name"/>
+        </xs:unique>
+
+        <xs:unique name="virtual-server-auth-db-nameUnique">
+          <xs:annotation>
+            <xs:documentation>
+              Each &lt;auth-db> must specify a unique name.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="auth-db"/>
+          <xs:field xpath="name"/>
+        </xs:unique>
+
+        <xs:unique name="virtual-server-access-log-nameUnique">
+          <xs:annotation>
+            <xs:documentation>
+              Each &lt;access-log> must specify a unique name.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="access-log"/>
+          <xs:field xpath="name"/>
+        </xs:unique>
+
+        <xs:unique name="virtual-server-search-collection-nameUnique">
+          <xs:annotation>
+            <xs:documentation>
+              Each &lt;search-collection> must specify a unique name.
+            </xs:documentation>
+          </xs:annotation>
+          <xs:selector xpath="search-collection"/>
+          <xs:field xpath="name"/>
+        </xs:unique>
+      </xs:element>
+
+      <xs:element name="event" type="eventType" minOccurs="0" maxOccurs="unbounded"/>
+
+      <xs:element ref="server-extension-element" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:unique name="server-variable-nameUnique">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;variable> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="variable"/>
+    <xs:field xpath="name"/>
+  </xs:unique>
+
+  <xs:unique name="server-lifecycle-module-nameUnique">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;lifecycle-module> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="lifecycle-module"/>
+    <xs:field xpath="name"/>
+  </xs:unique>
+
+  <xs:unique name="server-auth-db-nameUnique">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;auth-db> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="auth-db"/>
+    <xs:field xpath="name"/>
+  </xs:unique>
+
+  <xs:unique name="server-access-log-nameUnique">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;access-log> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="access-log"/>
+    <xs:field xpath="name"/>
+  </xs:unique>
+
+  <xs:key name="soap-auth-provider-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;soap-auth-provider> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="soap-auth-provider"/>
+    <xs:field xpath="name"/>
+  </xs:key>
+
+  <xs:key name="auth-realm-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;auth-realm> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="auth-realm"/>
+    <xs:field xpath="name"/>
+  </xs:key>
+
+  <xs:key name="http-listener-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;http-listener> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="http-listener"/>
+    <xs:field xpath="name"/>
+  </xs:key>
+
+  <xs:key name="virtual-server-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        Each &lt;virtual-server> must specify a unique name.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="virtual-server"/>
+    <xs:field xpath="name"/>
+  </xs:key>
+
+  <xs:keyref name="default-soap-auth-provider-nameKeyref" refer="soap-auth-provider-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        &lt;default-soap-auth-provider-name> must refer to an existing &lt;soap-auth-provider>.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="."/>
+    <xs:field xpath="default-soap-auth-provider-name"/>
+  </xs:keyref>
+
+  <xs:keyref name="default-auth-realm-nameKeyref" refer="auth-realm-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        &lt;default-auth-realm-name> must refer to an existing &lt;auth-realm>.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="."/>
+    <xs:field xpath="default-auth-realm-name"/>
+  </xs:keyref>
+
+  <xs:keyref name="default-virtual-server-nameKeyref" refer="virtual-server-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        &lt;default-virtual-server-name> must refer to an existing &lt;virtual-server>.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="http-listener"/>
+    <xs:field xpath="default-virtual-server-name"/>
+  </xs:keyref>
+
+  <xs:keyref name="http-listener-nameKeyref" refer="http-listener-nameKey">
+    <xs:annotation>
+      <xs:documentation>
+        &lt;http-listener-name> must refer to an existing &lt;http-listener>.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:selector xpath="virtual-server"/>
+    <xs:field xpath="http-listener-name"/>
+  </xs:keyref>
+</xs:element>
+
+<xs:element name="server-extension-element" type="server-extension-elementType" abstract="true"/>
+
+<xs:element name="virtual-server-extension-element" type="virtual-server-extension-elementType" abstract="true"/>
+
+<xs:complexType name="server-extension-elementType"/>
+
+<xs:complexType name="clusterType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="local-host" type="hostType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="instance" type="instanceType" minOccurs="1" maxOccurs="unbounded"/>
+
+    <xs:element name="session-replication" type="cluster-session-replicationType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;session-replication> element is omitted, session-replication support is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <enabled>false</enabled>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="instanceType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="host" type="hostType"/>
+
+    <xs:element name="session-replication" type="instance-session-replicationType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="cluster-session-replicationType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="port" type="portType" default="1099" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1099</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="key" type="xs:string" default="" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="encrypted" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="cipher" type="cipherType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>AES/CBC/PKCS5Padding</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="protocol" type="sessionReplicationProtocolType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>JRMP</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="async" type="xs:boolean" default="false" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="getAttribute-triggers-replication" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="replica-discovery-max-hops" type="maxHopsType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>-1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="startup-discovery-timeout" type="intervalType" minOccurs="0"/>
+
+    <xs:element name="cookie-name" type="noWhitespaceTokenType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:simpleType name="maxHopsType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a maximum number of hops between 1 and 2147483647, inclusive. -1 indicates there is no maximum.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="1"/>
+        <xs:maxInclusive value="2147483647"/>
+      </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="-1"/>
+        <xs:maxInclusive value="-1"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:complexType name="instance-session-replicationType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="port" type="portType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/cluster/session-replication/port" content-xpath="/server/cluster/session-replication/port"/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="instance-id" type="noWhitespaceTokenType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="logType">
+  <xs:all>
+    <xs:element name="log-stdout" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-stderr" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-virtual-server-name" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="create-console" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-to-console" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-to-syslog" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="date-format" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>[%d/%b/%Y:%H:%M:%S]</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="archive-suffix" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>.%Y%m%d%H%M</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="archive-command" type="xs:string" minOccurs="0"/>
+
+    <xs:element name="log-level" type="logLevelType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>info</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-file" type="pathType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>../logs/errors</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="variableType">
+  <xs:all>
+    <xs:element name="name" type="variableNameType"/>
+
+    <xs:element name="value" type="xs:string"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="localizationType">
+  <xs:all>
+    <xs:element name="default-language" type="xs:language" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/localization/default-language" content-xpath="/server/localization/default-language"/>
+          <appinfo:implicit>en</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="negotiate-client-language" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/localization/negotiate-client-language" content-xpath="/server/localization/negotiate-client-language"/>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="httpType">
+  <xs:all>
+    <xs:element name="version" type="noWhitespaceTokenType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>HTTP/1.1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="server-header" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>heliod-web-server/0.1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="etag" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>true</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="request-header-buffer-size" type="sizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="strict-request-headers" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="discard-misquoted-cookies" type="xs:boolean" default="true" minOccurs="0">
+       <xs:annotation>
+         <xs:appinfo>
+           <appinfo:implicit>true</appinfo:implicit>
+         </xs:appinfo>
+       </xs:annotation>
+     </xs:element> 
+
+    <xs:element name="max-request-headers" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>64</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="512"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="output-buffer-size" type="sizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-unchunk-size" type="sizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="unchunk-timeout" type="timeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>60</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="io-timeout" type="intervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>30</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="request-body-timeout" type="largeTimeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>-1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="request-header-timeout" type="timeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>30</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="favicon" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="keep-aliveType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="threads" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="256"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-connections" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="timeout" type="nonZeroTimeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>30</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="poll-interval" type="pollIntervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0.001</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="thread-poolType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="queue-size" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="min-threads" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-threads" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="stack-size" type="stackSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server[platform = '64']">262144</appinfo:implicit>
+          <appinfo:implicit>131072</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="pkcs11Type">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="allow-bypass" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="crl-path" type="pathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>crl</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="token" type="tokenType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="tokenType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="xs:string"/>
+
+    <xs:element name="pin" type="xs:string" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="statsType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="interval" type="intervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>5</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="profiling" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="cgiType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="timeout" type="nonZeroTimeoutType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>-1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="idle-timeout" type="intervalType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>300</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="cgistub-path" type="pathType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="cgistub-idle-timeout" type="intervalType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>30</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="min-cgistubs" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-cgistubs" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>16</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="env-variable" type="env-variableType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="env-variableType">
+  <xs:all>
+    <xs:element name="name" type="noWhitespaceTokenType"/>
+
+    <xs:element name="value" type="xs:string"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="qosType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="interval" type="intervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>30</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="dnsType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="async" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="timeout" type="intervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>12</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="dns-cacheType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-age" type="largeIntervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>120</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-entries" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1024</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="file-cacheType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-age" type="nonZeroTimeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>30</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-entries" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1024</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1073741824"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-open-files" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1073741824"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="sendfile" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-platform="WINNT"/>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="copy-files" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-platform="WINNT"/>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="copy-path" type="pathType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="boolean(/server/temp-path) and not(copy-files[enabled = 'false'])" content-xpath="concat(/server/temp-path,'/file-cache')"/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="replacement" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>lru</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:token">
+          <xs:enumeration value="lru"/>
+          <xs:enumeration value="lfu"/>
+          <xs:enumeration value="false"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="cache-content" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-heap-file-size" type="maxSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="cache-content[enabled = 'false']">0</appinfo:implicit>
+          <appinfo:implicit>524288</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-heap-space" type="maxAddressSpaceType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="cache-content[enabled = 'false']">0</appinfo:implicit>
+          <appinfo:implicit>10485760</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-mmap-file-size" type="maxSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-mmap-space" type="maxAddressSpaceType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="buffer-size" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="512"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="sendfile-size" type="sizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="acl-cacheType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-users" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>200</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-groups-per-user" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>4</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1024"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-age" type="intervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>120</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="ssl-session-cacheType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-entries" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>10000</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="524288"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-ssl2-session-age" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>100</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="100"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-ssl3-tls-session-age" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>86400</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="86400"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="access-log-bufferType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="buffer-size" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="4096"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="direct-io" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-buffers" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1000</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="65536"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-buffers-per-file" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="128"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-age" type="intervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="davType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="default-owner" type="userType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/user" content-xpath="/server/user"/>
+          <appinfo:implicit>webservd</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="provider" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>filesystem</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="min-lock-timeout" type="minLockTimeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-xml-request-body-size" type="maxSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-expand-property-depth" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>3</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="100"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-propfind-depth" type="maxPropfindDepthType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-report-response-elements" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1000</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="2147483647"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="auth" type="authType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="acl-db" type="acl-dbType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="lock-db" type="lock-dbType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="property-db" type="property-dbType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="authType">
+  <xs:all>
+    <xs:element name="auth-db-name" type="nameType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/auth/auth-db-name" content-xpath="/server/dav/auth/auth-db-name"/>
+          <appinfo:implicit if-xpath="/server/default-auth-db-name = /server/auth-db/name" content-xpath="/server/default-auth-db-name"/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="method" type="authMethodType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/auth/method" content-xpath="/server/dav/auth/method"/>
+          <appinfo:implicit>basic</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="prompt" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/auth/prompt" content-xpath="/server/dav/auth/prompt"/>
+          <appinfo:implicit>WebDAV</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="acl-dbType">
+  <xs:all>
+    <xs:element name="max-entries" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/acl-db/max-entries" content-xpath="/server/dav/acl-db/max-entries"/>
+          <appinfo:implicit>10</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="2147483647"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-size" type="maxSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/acl-db/max-size" content-xpath="/server/dav/acl-db/max-size"/>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="update-interval" type="cacheUpdateIntervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/acl-db/update-interval" content-xpath="/server/dav/acl-db/update-interval"/>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="lock-dbType">
+  <xs:all>
+    <xs:element name="path" type="pathType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/lock-db/path" content-xpath="/server/dav/lock-db/path"/>
+          <appinfo:implicit if-xpath="(parent::dav-collection)" content-xpath="concat('../lock-db/',../../name)"/>
+        </xs:appinfo>
+      </xs:annotation>
+   </xs:element>
+
+    <xs:element name="update-interval" type="cacheUpdateIntervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/lock-db/update-interval" content-xpath="/server/dav/lock-db/update-interval"/>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="property-dbType">
+  <xs:all>
+    <xs:element name="max-size" type="maxSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/property-db/max-size" content-xpath="/server/dav/property-db/max-size"/>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="update-interval" type="cacheUpdateIntervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/property-db/update-interval" content-xpath="/server/dav/property-db/update-interval"/>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="snmpType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="master-host" type="hostType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>127.0.0.1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="description" type="xs:string" minOccurs="1"/>
+
+    <xs:element name="organization" type="xs:string" minOccurs="1"/>
+
+    <xs:element name="location" type="xs:string" minOccurs="1"/>
+
+    <xs:element name="contact" type="xs:string" minOccurs="1"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="qos-limitsType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-bps" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="2147483647"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-connections" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="jvmType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="java-home" type="pathType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="class-path-prefix" type="classPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="server-class-path" type="classPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="class-path-suffix" type="classPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="env-class-path-ignored" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="native-library-path-prefix" type="libraryPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="sticky-attach" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="debug" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="debug-jvm-options" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="jvm-options" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="bytecode-preprocessor-class" type="classType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="profiler" type="profilerType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="profilerType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="class-path" type="classPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="native-library-path" type="libraryPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="jvm-options" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="servlet-containerType">
+  <xs:all>
+    <xs:element name="dynamic-reload-interval" type="dynamicReloadIntervalType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>-1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-level" type="logLevelType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit content-xpath="/server/log/log-level"/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="anonymous-role" type="roleType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>ANYONE</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="single-threaded-servlet-pool-size" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>5</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="cross-context-allowed" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>true</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="reuse-session-id" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="encode-cookies" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="secure-session-cookie" type="secureSessionCookieType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>dynamic</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="dispatcher-max-depth" type="sizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>20</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="display-exception" type="xs:boolean" default="false" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="decode-plus-in-cookie" type="xs:boolean" default="false" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="lifecycle-moduleType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="class" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="load-order" minOccurs="0" maxOccurs="1">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="2147483647"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="is-failure-fatal" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="class-path" type="classPathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="custom-resourceType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="jndi-name" type="jndiNameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="res-type" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="factory-class" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="external-jndi-resourceType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="jndi-name" type="jndiNameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="external-jndi-name" type="jndiNameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="res-type" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="factory-class" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="jdbc-resourceType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="jndi-name" type="jndiNameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="datasource-class" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="min-connections" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>8</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-connections" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>32</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="4096"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="idle-timeout" type="timeoutType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>60</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="wait-timeout" type="nonZeroTimeoutType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>60</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="isolation-level" type="jdbcIsolationLevelType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>default</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="isolation-level-guaranteed" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="connection-validation" type="jdbcConnectionValidationType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="connection-validation-table-name" type="noWhitespaceTokenType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="fail-all-connections" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="connection-creation-property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="connection-lease-property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="mail-resourceType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="jndi-name" type="jndiNameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="soap-auth-providerType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="class" type="classType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="request-policy" type="message-policyType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="response-policy" type="message-policyType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="message-policyType">
+  <xs:all>
+    <xs:element name="auth-source" type="messageSourcePolicyType" minOccurs="0"/>
+
+    <xs:element name="auth-recipient" type="messageRecipientPolicyType" minOccurs="0"/>
+
+<!-- XXX need defaults -->
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="auth-realmType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="type" type="authRealmTypeType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="class" type="classType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="property" type="propertyType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="auth-dbType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="url" type="urlType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="auth-expiring-url" type="urlType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="property" type="encodablePropertyType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="access-logType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="nameType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>default</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="mode" type="access-logModeType" default="text" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+            If the mode element is omitted, the mode is assumed to be text. 
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>text</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="file" type="pathType"/>
+
+    <xs:element name="format" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>%Ses->client.ip% - %Req->vars.auth-user% [%SYSDATE%] "%Req->reqpb.clf-request%" %Req->srvhdrs.clf-status% %Req->srvhdrs.content-length%</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="http-listenerType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="nameType"/>
+
+    <xs:element name="ip" type="listenAddressType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>*</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="port" type="portType"/>
+
+    <xs:element name="acceptor-threads" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="128"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="server-name" type="serverNameType"/>
+
+    <xs:element name="blocking-io" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="handle-protocol-mismatch" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="family" type="familyType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>default</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="listen-queue-size" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>128</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="receive-buffer-size" type="sizeType" minOccurs="0"/>
+
+    <xs:element name="send-buffer-size" type="sizeType" minOccurs="0"/>
+
+    <xs:element name="default-virtual-server-name" type="nameType"/>
+
+    <xs:element name="ssl" type="sslType" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;ssl> element is omitted, SSL/TLS support is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <enabled>false</enabled>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="sslType">
+  <xs:annotation>
+    <xs:documentation>
+      The &lt;ssl> element configures SSL/TLS settings.
+    </xs:documentation>
+  </xs:annotation>
+
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="server-cert-nickname" type="xs:string" minOccurs="0" maxOccurs="unbounded">
+      <xs:annotation>
+        <xs:documentation>
+          If no &lt;server-cert-nickname> element is given, default is one server certificate with nickname Server-Cert.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="ssl2" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;ssl2> element is omitted, SSLv2 support is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="ssl3" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;ssl3> element is omitted, SSLv3 support is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="tls" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;tls> element is omitted, TLS support is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="tls-rollback-detection" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;tls-rollback-detection> element is omitted, TLS rollback attack detection is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="ssl2-ciphers" type="ssl2-ciphersType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;ssl2-ciphers> element is omitted, the set of supported SSLv2 cipher suites is configured implicitly.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="ssl3-tls-ciphers" type="ssl3-tls-ciphersType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;ssl3-tls-ciphers> element is omitted, the set of supported SSLv3/TLS cipher suites is configured implicitly.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="client-auth" type="clientAuthType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;client-auth> element is omitted, client certificate authentication is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="client-auth-timeout" type="intervalType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;client-auth-timeout> element is omitted, the client authentication handshake timeout defaults to 60 seconds.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>60</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-client-auth-data" type="sizeType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;max-client-auth-data> element is omitted, the maximum amount of data that will be buffered during the client authentication handshake defaults to 1048576 bytes.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>1048576</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="ssl2-ciphersType">
+  <xs:all>
+    <xs:element name="SSL_RC4_128_WITH_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RC4_128_WITH_MD5> element is omitted, the SSL_RC4_128_WITH_MD5 SSLv2 cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RC4_128_EXPORT40_WITH_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RC4_128_EXPORT40_WITH_MD5> element is omitted, the SSL_RC4_128_EXPORT40_WITH_MD5 SSLv2 cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RC2_128_CBC_WITH_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RC2_128_CBC_WITH_MD5> element is omitted, the SSL_RC2_128_CBC_WITH_MD5 SSLv2 cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RC2_128_CBC_EXPORT40_WITH_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RC2_128_CBC_EXPORT40_WITH_MD5> element is omitted, the SSL_RC2_128_CBC_EXPORT40_WITH_MD5 SSLv2 cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_DES_64_CBC_WITH_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_DES_64_CBC_WITH_MD5> element is omitted, the SSL_DES_64_CBC_WITH_MD5 SSLv2 cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_DES_192_EDE3_CBC_WITH_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_DES_192_EDE3_CBC_WITH_MD5> element is omitted, the SSL_DES_192_EDE3_CBC_WITH_MD5 SSLv2 cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+  
+<xs:complexType name="ssl3-tls-ciphersType">
+  <xs:all>
+    <xs:element name="SSL_RSA_WITH_RC4_128_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_WITH_RC4_128_MD5> element is omitted, the SSL_RSA_WITH_RC4_128_MD5 SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_WITH_RC4_128_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_WITH_RC4_128_SHA> element is omitted, the SSL_RSA_WITH_RC4_128_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_WITH_3DES_EDE_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_WITH_3DES_EDE_CBC_SHA> element is omitted, the SSL_RSA_WITH_3DES_EDE_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_WITH_DES_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_WITH_DES_CBC_SHA> element is omitted, the SSL_RSA_WITH_DES_CBC_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_EXPORT_WITH_RC4_40_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_EXPORT_WITH_RC4_40_MD5> element is omitted, the SSL_RSA_EXPORT_WITH_RC4_40_MD5 SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5> element is omitted, the SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5 SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_WITH_NULL_MD5" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_WITH_NULL_MD5> element is omitted, the SSL_RSA_WITH_NULL_MD5 SSLv3/TLS cipher suite is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_WITH_NULL_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_WITH_NULL_SHA> element is omitted, the SSL_RSA_WITH_NULL_SHA SSLv3/TLS cipher suite is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA> element is omitted, the SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="SSL_RSA_FIPS_WITH_DES_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;SSL_RSA_FIPS_WITH_DES_CBC_SHA> element is omitted, the SSL_RSA_FIPS_WITH_DES_CBC_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA> element is omitted, the TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_RSA_WITH_NULL_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_RSA_WITH_NULL_SHA> element is omitted, the TLS_ECDHE_RSA_WITH_NULL_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_RSA_WITH_RC4_128_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_RSA_WITH_RC4_128_SHA> element is omitted, the TLS_ECDHE_RSA_WITH_RC4_128_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA> element is omitted, the TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA> element is omitted, the TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_RSA_WITH_AES_128_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_RSA_WITH_AES_128_CBC_SHA> element is omitted, the TLS_ECDH_RSA_WITH_AES_128_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_RSA_WITH_RC4_128_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_RSA_WITH_RC4_128_SHA> element is omitted, the TLS_ECDH_RSA_WITH_RC4_128_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA> element is omitted, the TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_RSA_WITH_AES_256_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_RSA_WITH_AES_256_CBC_SHA> element is omitted, the TLS_ECDH_RSA_WITH_AES_256_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA> element is omitted, the TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_ECDSA_WITH_RC4_128_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_ECDSA_WITH_RC4_128_SHA> element is omitted, the TLS_ECDH_ECDSA_WITH_RC4_128_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA> element is omitted, the TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA> element is omitted, the TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA> element is omitted, the TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_ECDSA_WITH_NULL_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_ECDSA_WITH_NULL_SHA> element is omitted, the TLS_ECDHE_ECDSA_WITH_NULL_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_ECDSA_WITH_RC4_128_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_ECDSA_WITH_RC4_128_SHA> element is omitted, the TLS_ECDHE_ECDSA_WITH_RC4_128_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA> element is omitted, the TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA> element is omitted, the TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_RSA_EXPORT1024_WITH_DES_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_RSA_EXPORT1024_WITH_DES_CBC_SHA> element is omitted, the TLS_RSA_EXPORT1024_WITH_DES_CBC_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_RSA_EXPORT1024_WITH_RC4_56_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_RSA_EXPORT1024_WITH_RC4_56_SHA> element is omitted, the TLS_RSA_EXPORT1024_WITH_RC4_56_SHA SSLv3/TLS cipher suite is implicitly disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_RSA_WITH_AES_128_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_RSA_WITH_AES_128_CBC_SHA> element is omitted, the TLS_RSA_WITH_AES_128_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="TLS_RSA_WITH_AES_256_CBC_SHA" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;TLS_RSA_WITH_AES_256_CBC_SHA> element is omitted, the TLS_RSA_WITH_AES_256_CBC_SHA SSLv3/TLS cipher suite is implicitly enabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="virtual-serverType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="http-listener-name" type="nameType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="host" type="hostPatternType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="canonical-server-name" type="serverNameType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="object-file" type="pathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;object-file> element is omitted, the default NSAPI Object file filename is obj.conf.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>obj.conf</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="default-object-name" type="objectType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;default-object-name> element is omitted, the default NSAPI Object name is default.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>default</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="document-root" type="pathType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;document-root> element is omitted, the default document root is ../docs.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>../docs</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="auth-db" type="auth-dbType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="acl-file" type="pathType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="mime-file" type="pathType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="access-log" type="access-logType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="qos-limits" type="qos-limitsType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;qos-limits> element is omitted, no QOS limits are enforced.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <enabled>false</enabled>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="search-app" type="search-appType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;search-app> element is omitted, the search application is disabled.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <enabled>false</enabled>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="search-collection" type="search-collectionType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="dav-collection" type="dav-collectionType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="web-app" type="web-appType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="single-sign-on" type="single-sign-onType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="log-file" type="pathType" minOccurs="0" maxOccurs="1">
+
+    </xs:element>
+
+    <xs:element name="config-file" type="pathPatternType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="localization" type="localizationType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          If the &lt;localization> element is omitted, localization settings are configured implicitly.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="variable" type="variableType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element ref="virtual-server-extension-element" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="virtual-server-extension-elementType"/>
+
+<xs:complexType name="search-appType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-hits" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>1000</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="1"/>
+          <xs:maxInclusive value="10000"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="uri" type="uriType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>/search</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="search-collectionType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="name" type="nameType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="display-name" type="xs:string" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="uri" type="uriType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="document-root" type="pathType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="path" type="pathType" minOccurs="1" maxOccurs="1"/>
+
+    <xs:element name="search-event" type="search-eventType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="index" type="search-collection-indexType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <meta-tag>author</meta-tag>
+            <meta-tag>subject</meta-tag>
+            <meta-tag>keywords</meta-tag>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="include" type="search-collection-includeType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <extension>html</extension>
+            <extension>htm</extension>
+            <extension>txt</extension>
+            <extension>pdf</extension>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="convert" type="search-collection-convertType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <extension>pdf</extension>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="search-collection-indexType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="meta-tag" type="noWhitespaceTokenType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="search-collection-convertType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="extension" type="fileExtensionType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="search-collection-includeType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="extension" type="fileExtensionType" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="dav-collectionType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="default-owner" type="userType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/default-owner" content-xpath="/server/dav/default-owner"/>
+          <appinfo:implicit if-xpath="/server/user" content-xpath="/server/user"/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="uri" type="uriType"/>
+
+    <xs:element name="source-uri" type="uriType" minOccurs="0"/>
+
+    <xs:element name="provider" type="xs:string" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/provider" content-xpath="/server/dav/provider"/>
+          <appinfo:implicit>filesystem</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="min-lock-timeout" type="minLockTimeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/min-lock-timeout" content-xpath="/server/dav/min-lock-timeout"/>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-xml-request-body-size" type="maxSizeType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/max-xml-request-body-size" content-xpath="/server/dav/max-xml-request-body-size"/>
+          <appinfo:implicit>8192</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-expand-property-depth" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/max-expand-property-depth" content-xpath="/server/dav/max-expand-property-depth"/>
+          <appinfo:implicit>3</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="100"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="max-propfind-depth" type="maxPropfindDepthType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/max-propfind-depth" content-xpath="/server/dav/max-propfind-depth"/>
+          <appinfo:implicit>1</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="max-report-response-elements" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit if-xpath="/server/dav/max-report-response-elements" content-xpath="/server/dav/max-report-response-elements"/>
+          <appinfo:implicit>1000</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="2147483647"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="auth" type="authType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="acl-db" type="acl-dbType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="lock-db" type="lock-dbType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="property-db" type="property-dbType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="web-appType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="uri" type="uriType"/>
+
+    <xs:element name="path" type="pathType"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="single-sign-onType">
+  <xs:all>
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="idle-timeout" type="nonZeroTimeoutType" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>300</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="eventType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="time" type="timeType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="interval" type="eventIntervalType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="rotate-access-log" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="rotate-log" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="command" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="update-crl" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="reconfig" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="restart" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="search-eventType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="time" type="timeType" minOccurs="0" maxOccurs="unbounded"/>
+
+    <xs:element name="interval" type="eventIntervalType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="add-documents" type="add-documentsType" minOccurs="0" maxOccurs="1"/>
+
+    <xs:element name="reindex" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="add-documentsType">
+  <xs:all>
+    <xs:element name="pattern" type="xs:string"/>
+
+    <xs:element name="default-encoding" type="encodingType" minOccurs="0"/>
+
+    <xs:element name="include-subdirectories" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+        <appinfo:implicit>true</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+  </xs:all>
+</xs:complexType>
+
+<xs:simpleType name="encodingType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a valid character encoding supported by Java.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union memberTypes="non-cjk-encodingType cjk-encodingType"/>  
+</xs:simpleType>
+
+<xs:simpleType name="non-cjk-encodingType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a valid non-CJK character encoding supported by Java.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="US-ASCII"/>
+    <xs:enumeration value="Cp500"/>
+    <xs:enumeration value="Cp420"/>
+    <xs:enumeration value="Cp1046"/>
+    <xs:enumeration value="Cp273"/>
+    <xs:enumeration value="Cp855"/>
+    <xs:enumeration value="Cp277"/>
+    <xs:enumeration value="Cp922"/>
+    <xs:enumeration value="Cp1122"/>
+    <xs:enumeration value="Cp278"/>
+    <xs:enumeration value="Cp297"/>
+    <xs:enumeration value="Cp875"/>
+    <xs:enumeration value="Cp424"/>
+    <xs:enumeration value="Cp856"/>
+    <xs:enumeration value="Cp871"/>
+    <xs:enumeration value="Cp1097"/>
+    <xs:enumeration value="Cp1098"/>
+    <xs:enumeration value="Cp280"/>
+    <xs:enumeration value="Cp1026"/>
+    <xs:enumeration value="Cp921"/>
+    <xs:enumeration value="Cp1112"/>
+    <xs:enumeration value="Cp869"/>
+    <xs:enumeration value="Cp1025"/>
+    <xs:enumeration value="Cp870"/>
+    <xs:enumeration value="Cp918"/>
+    <xs:enumeration value="Cp1006"/>
+    <xs:enumeration value="Cp284"/>
+    <xs:enumeration value="Cp874"/>
+    <xs:enumeration value="Cp838"/>
+    <xs:enumeration value="Cp857"/>
+    <xs:enumeration value="Cp285"/>
+    <xs:enumeration value="Cp1123"/>
+    <xs:enumeration value="Cp1124"/>
+    <xs:enumeration value="Cp858"/>
+    <xs:enumeration value="Cp1140"/>
+    <xs:enumeration value="Cp1141"/>
+    <xs:enumeration value="Cp1142"/>
+    <xs:enumeration value="Cp1143"/>
+    <xs:enumeration value="Cp1144"/>
+    <xs:enumeration value="Cp1145"/>
+    <xs:enumeration value="Cp1146"/>
+    <xs:enumeration value="Cp1147"/>
+    <xs:enumeration value="Cp1148"/>
+    <xs:enumeration value="Cp1149"/>
+    <xs:enumeration value="Cp1047"/>
+    <xs:enumeration value="ISCII91"/>
+    <xs:enumeration value="ISO-8859-1"/>
+    <xs:enumeration value="ISO-8859-2"/>
+    <xs:enumeration value="ISO-8859-3"/>
+    <xs:enumeration value="ISO-8859-4"/>
+    <xs:enumeration value="ISO-8859-9"/>
+    <xs:enumeration value="ISO-8859-11"/>
+    <xs:enumeration value="ISO-8859-13"/>
+    <xs:enumeration value="ISO-8859-15"/>
+    <xs:enumeration value="ISO8859_15"/>
+    <xs:enumeration value="ISO-8859-5"/>
+    <xs:enumeration value="ISO-8859-6"/>
+    <xs:enumeration value="ISO-8859-7"/>
+    <xs:enumeration value="ISO-8859-8"/>
+    <xs:enumeration value="MacArabic"/>
+    <xs:enumeration value="MacCroatian"/>
+    <xs:enumeration value="MacCyrillic"/>
+    <xs:enumeration value="MacDingbat"/>
+    <xs:enumeration value="MacGreek"/>
+    <xs:enumeration value="MacHebrew"/>
+    <xs:enumeration value="MacIceland"/>
+    <xs:enumeration value="MacCentralEurope"/>
+    <xs:enumeration value="MacRoman"/>
+    <xs:enumeration value="MacRomania"/>
+    <xs:enumeration value="MacSymbol"/>
+    <xs:enumeration value="MacThai"/>
+    <xs:enumeration value="MacTurkish"/>
+    <xs:enumeration value="MacUkraine"/>
+    <xs:enumeration value="Cp437"/>
+    <xs:enumeration value="Cp863"/>
+    <xs:enumeration value="Cp861"/>
+    <xs:enumeration value="Cp850"/>
+    <xs:enumeration value="Cp852"/>
+    <xs:enumeration value="Cp865"/>
+    <xs:enumeration value="Cp868"/>
+    <xs:enumeration value="Cp860"/>
+    <xs:enumeration value="Cp866"/>
+    <xs:enumeration value="Cp864"/>
+    <xs:enumeration value="Cp775"/>
+    <xs:enumeration value="Cp737"/>
+    <xs:enumeration value="Cp862"/>
+    <xs:enumeration value="KOI8-R"/>
+    <xs:enumeration value="TIS-620"/>
+    <xs:enumeration value="UTF-8"/>
+    <xs:enumeration value="UTF-16"/>
+    <xs:enumeration value="UTF-16BE"/>
+    <xs:enumeration value="UTF-16LE"/>
+    <xs:enumeration value="UnicodeBig"/>
+    <xs:enumeration value="UnicodeLittle"/>
+    <xs:enumeration value="Cp037"/>
+    <xs:enumeration value="windows-1256"/>
+    <xs:enumeration value="windows-1257"/>
+    <xs:enumeration value="windows-1250"/>
+    <xs:enumeration value="windows-1251"/>
+    <xs:enumeration value="windows-1253"/>
+    <xs:enumeration value="windows-1255"/>
+    <xs:enumeration value="windows-1252"/>
+    <xs:enumeration value="MS874"/>
+    <xs:enumeration value="windows-1254"/>
+    <xs:enumeration value="windows-1258"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="cjk-encodingType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a valid CJK character encoding supported by Java.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="Cp933"/>
+    <xs:enumeration value="Cp970"/>
+    <xs:enumeration value="EUC-KR"/>
+    <xs:enumeration value="ISO-2022-KR"/>
+    <xs:enumeration value="Cp950"/>
+    <xs:enumeration value="Cp949"/>
+    <xs:enumeration value="Cp935"/>
+    <xs:enumeration value="EUC-CN"/>
+    <xs:enumeration value="GB18030"/>
+    <xs:enumeration value="GBK"/>
+    <xs:enumeration value="ISO-2022-CN-GB"/>
+    <xs:enumeration value="Cp937"/>
+    <xs:enumeration value="EUC-TW"/>
+    <xs:enumeration value="ISO-2022-CN-CNS"/>
+    <xs:enumeration value="Big5"/>
+    <xs:enumeration value="Big5-HKSCS"/>
+    <xs:enumeration value="Big5_Solaris"/>
+    <xs:enumeration value="windows-31j"/>
+    <xs:enumeration value="windows-949"/>
+    <xs:enumeration value="windows-936"/>
+    <xs:enumeration value="windows-950"/>
+    <xs:enumeration value="ISO-2022-CN"/>
+    <xs:enumeration value="ISO-2022-JP"/>
+    <xs:enumeration value="Shift_JIS"/>
+    <xs:enumeration value="Cp1381"/>
+    <xs:enumeration value="Cp1383"/>
+    <xs:enumeration value="Cp33722"/>
+    <xs:enumeration value="Cp33722"/>
+    <xs:enumeration value="Cp930"/>
+    <xs:enumeration value="Cp939"/>
+    <xs:enumeration value="Cp942"/>
+    <xs:enumeration value="Cp942C"/>
+    <xs:enumeration value="Cp943"/>
+    <xs:enumeration value="Cp943C"/>
+    <xs:enumeration value="Cp948"/>
+    <xs:enumeration value="Cp949C"/>
+    <xs:enumeration value="Cp964"/>
+    <xs:enumeration value="Cp970"/>
+    <xs:enumeration value="JISAutoDetect"/>
+    <xs:enumeration value="Johab"/>
+    <xs:enumeration value="EUC-JP"/>
+    <xs:enumeration value="EUC-JP-LINUX"/>
+    <xs:enumeration value="EUC-JP-SOLARIS"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="timeType">
+  <xs:all>
+    <xs:element name="time-of-day" type="timeOfDayType"/>
+
+    <xs:element name="day-of-week" type="dayOfWeekType" minOccurs="0"/>
+
+    <xs:element name="day-of-month" type="dayOfMonthType" minOccurs="0"/>
+
+    <xs:element name="month" type="monthType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="propertyType">
+  <xs:all>
+    <xs:element name="name" type="noWhitespaceTokenType"/>
+
+    <xs:element name="value" type="xs:string"/>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:complexType name="encodablePropertyType">
+  <xs:all>
+    <xs:element name="name" type="noWhitespaceTokenType"/>
+
+    <xs:element name="value" type="xs:string"/>
+
+    <xs:element name="encoded" type="xs:boolean" default="true" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="description" type="xs:anyType" minOccurs="0"/>
+  </xs:all>
+</xs:complexType>
+
+<xs:simpleType name="userType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a user name.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:minLength value="1"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="emailType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an email address.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="[^\s:@/]+(@([a-zA-Z0-9]([\-a-zA-Z0-9]*[a-zA-Z0-9]|)\.)*[a-zA-Z]([\-a-zA-Z0-9]*[a-zA-Z0-9]|)|)"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="pathType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a pathname.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string">
+    <xs:minLength value="1"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="pathPatternType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a wildcard pattern that matches one or more pathnames.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:minLength value="1"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="classPathType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a class path.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string"/>
+</xs:simpleType>
+
+<xs:simpleType name="libraryPathType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a library path.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string"/>
+</xs:simpleType>
+
+<xs:simpleType name="uriType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a URI (virtual directory) that begins with /.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string">
+    <xs:pattern value="/([^/](/|))*"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="fileExtensionType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a file extension without the leading dot.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="[^\.][^/]*"/>
+    <xs:minLength value="0"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="variableNameType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a variable name consisting of letters, numbers, and underscores. Variable names must not begin with a number.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="[_a-zA-Z][_a-zA-Z0-9]*"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="noWhitespaceTokenType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a token consisting of one or more non-whitespace characters.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="\S+"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="objectType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an NSAPI Object name.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string">
+    <xs:minLength value="1"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="nameType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a name consisting of one or more characters. Whitespace is not permitted.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="noWhitespaceTokenType"/>
+</xs:simpleType>
+
+<xs:simpleType name="classType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a fully qualified class name.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="noWhitespaceTokenType">
+    <xs:pattern value="[^\s\./]+(\.[^\s\./]+)+"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="cipherType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must specify a JCE cipher. JCE ciphers are specified using the form algorithm/mode/padding.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:string">
+    <xs:pattern value="[^/]+/[^/]+/[^/]+"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="sessionReplicationProtocolType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a session replication protocol. Valid session replication protocols are HTTP and JRMP.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="HTTP">
+      <xs:annotation>
+        <xs:documentation>
+          Use Hypertext Transfer Protocol for session replication.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="JRMP">
+      <xs:annotation>
+        <xs:documentation>
+          Use Java Remote Method Protocol for session replication.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="hostnameType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a hostname. Hostnames consist of one or more domain name labels separated by periods. Domain name labels may contain letters, numbers, and hyphens and must not begin or end with a hyphen. The terminal domain name label must not begin with a number.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="([a-zA-Z0-9]([\-a-zA-Z0-9]*[a-zA-Z0-9]|)\.)*[a-zA-Z]([\-a-zA-Z0-9]*[a-zA-Z0-9]|)"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ipv4AddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an IPv4 address in dotted decimal notation with no leading zeros.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ipv6AddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The conventional forms for IPv6 addresses are described in RFC 3513 section 2.2.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union memberTypes="ipv6NoncompressedAddressType ipv6CompressedAddressType ipv6MappedAddressType"/>
+</xs:simpleType>
+
+<xs:simpleType name="ipv6NoncompressedAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The non-compressed form for IPv6 addresses is described in RFC 3513 section 2.2 as conventional form 1.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ipv6CompressedAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The compressed form for IPv6 addresses is described in RFC 3513 section 2.2 as conventional form 2.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ipv6MappedAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The mapped form for IPv6 addresses is described in RFC 3513 section 2.2 as conventional form 3.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union memberTypes="ipv6NoncompressedMappedAddressType ipv6CompressedMappedAddressType"/>
+</xs:simpleType>
+
+<xs:simpleType name="ipv6NoncompressedMappedAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The non-compressed mapped form for IPv6 addresses is described in RFC 3513 section 2.2 as the intersection of conventional forms 1 and 3.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="([0-9a-fA-F]{1,4}:){6}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ipv6CompressedMappedAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The compressed mapped form for IPv6 addresses is described in RFC 3513 section 2.2 as the intersection of conventional forms 2 and 3.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="::([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}:([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+    <xs:pattern value="[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])(\.([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])){3}"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ipAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an IP address.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union memberTypes="ipv4AddressType ipv6AddressType"/>
+</xs:simpleType>
+
+<xs:simpleType name="hostType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a hostname or IP address.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union memberTypes="hostnameType ipAddressType"/>
+</xs:simpleType>
+
+<xs:simpleType name="hostPatternType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a wildcard pattern that matches one or more hostnames.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="[\-a-zA-Z0-9:.*?(|)$\[\]\^]+"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="listenAddressType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be *, a hostname, or an IP address.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union memberTypes="hostType">
+    <xs:simpleType>
+      <xs:restriction base="xs:token">
+        <xs:enumeration value="*"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:simpleType name="portType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a port number between 1 and 65535, inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="1"/>
+    <xs:maxInclusive value="65535"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="serverNameType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a hostname, fully qualified domain name, IP address, or an URL prefix that contains one. The URL prefix must not specify a path.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="([a-zA-Z][\-a-zA-Z0-9]*://|)[^/\s]+(/|)"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="urlType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a URL.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="[a-zA-Z][\-a-zA-Z0-9]*(://.*)?"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="familyType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be default, inet, inet6, or nca.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="default"/>
+    <xs:enumeration value="inet"/>
+    <xs:enumeration value="inet6"/>
+    <xs:enumeration value="nca"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="authRealmTypeType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be file, ldap, pam, certificate, or native.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="file"/>
+    <xs:enumeration value="ldap"/>
+    <xs:enumeration value="pam"/>
+    <xs:enumeration value="certificate"/>
+    <xs:enumeration value="native"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="logLevelType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a log level. Valid log levels are finest, finer, fine, info, warning, failure, config, security, and catastrophe.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="catastrophe">
+      <xs:annotation>
+        <xs:documentation>
+          catastrophe log messages record fatal errors.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="security">
+      <xs:annotation>
+        <xs:documentation>
+          security log messages record security issues.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="config">
+      <xs:annotation>
+        <xs:documentation>
+          config log messages record misconfigurations.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="failure">
+      <xs:annotation>
+        <xs:documentation>
+          failure log messages record failures.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="warning">
+      <xs:annotation>
+        <xs:documentation>
+          warning log messages contain warnings.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="info">
+      <xs:annotation>
+        <xs:documentation>
+          info log messages contain informational messages.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="fine">
+      <xs:annotation>
+        <xs:documentation>
+          fine log messages contain debug or diagnostic messages.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="finer">
+      <xs:annotation>
+        <xs:documentation>
+          finer log messages contain debug or diagnostic messages.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="finest">
+      <xs:annotation>
+        <xs:documentation>
+          finest log messages contain debug or diagnostic messages.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="access-logModeType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a log mode. Valid log modes are text and binary.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="text">
+      <xs:annotation>
+        <xs:documentation>
+          Use text format for access log.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="binary">
+      <xs:annotation>
+        <xs:documentation>
+          Use binary format for access log.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="sizeType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a size in bytes between 0 and 2147483647, inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="0"/>
+    <xs:maxInclusive value="2147483647"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="stackSizeType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a stack size in bytes between 8192 and 268435456, inclusive. 0 indicates the platform-specific default stack size should be used.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="8192"/>
+        <xs:maxInclusive value="268435456"/>
+      </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="0"/>
+        <xs:maxInclusive value="0"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:simpleType name="maxSizeType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a maximum size in bytes between 0 and 2147483647, inclusive. -1 indicates there is no maximum size.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="-1"/>
+    <xs:maxInclusive value="2147483647"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="maxAddressSpaceType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a maximum amount of address space in bytes between 0 and 1099511627776, inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="0"/>
+    <xs:maxInclusive value="1099511627776"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="timeoutType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0 and 3600 (1 hour), inclusive. -1 indicates no timeout.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union>
+    <xs:simpleType>
+      <xs:restriction base="xs:decimal">
+        <xs:minInclusive value="0"/>
+        <xs:maxInclusive value="3600"/>
+        <xs:fractionDigits value="3"/>
+      </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="-1"/>
+        <xs:maxInclusive value="-1"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:simpleType name="nonZeroTimeoutType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0.001 (1 millisecond) and 3600 (1 hour), inclusive. -1 indicates no timeout.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union>
+    <xs:simpleType>
+      <xs:restriction base="xs:decimal">
+        <xs:minInclusive value="0.001"/>
+        <xs:maxInclusive value="3600"/>
+        <xs:fractionDigits value="3"/>
+      </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="-1"/>
+        <xs:maxInclusive value="-1"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:simpleType name="largeTimeoutType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0 and 604800 (1 week), inclusive. -1 indicates no timeout.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union>
+    <xs:simpleType>
+      <xs:restriction base="xs:decimal">
+        <xs:minInclusive value="0"/>
+        <xs:maxInclusive value="604800"/>
+        <xs:fractionDigits value="3"/>
+      </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="-1"/>
+        <xs:maxInclusive value="-1"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:simpleType name="intervalType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0.001 and 3600 (1 hour), inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:decimal">
+    <xs:minInclusive value="0.001"/>
+    <xs:maxInclusive value="3600"/>
+    <xs:fractionDigits value="3"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="largeIntervalType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0.001 (1 millisecond) and 604800 (1 week), inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:decimal">
+    <xs:minInclusive value="0.001"/>
+    <xs:maxInclusive value="604800"/>
+    <xs:fractionDigits value="3"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="eventIntervalType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 60 (1 minute) and 86400 (1 day), inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="60"/>
+    <xs:maxInclusive value="86400"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="pollIntervalType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0.001 and 1, inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:decimal">
+    <xs:minInclusive value="0.001"/>
+    <xs:maxInclusive value="1"/>
+    <xs:fractionDigits value="3"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="cacheUpdateIntervalType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0.001 and 3600 (1 hour), inclusive. 0 disables caching.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:decimal">
+    <xs:minInclusive value="0"/>
+    <xs:maxInclusive value="3600"/>
+    <xs:fractionDigits value="3"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="dynamicReloadIntervalType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 1 and 60, inclusive. -1 disables dynamic reloading.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:union>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="1"/>
+        <xs:maxInclusive value="60"/>
+      </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType>
+      <xs:restriction base="xs:integer">
+        <xs:minInclusive value="-1"/>
+        <xs:maxInclusive value="-1"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<xs:simpleType name="minLockTimeoutType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an interval in seconds between 0.001 and 3600 (1 hour), inclusive. 0 indicates there is no minimum lock timeout.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:decimal">
+    <xs:minInclusive value="0"/>
+    <xs:maxInclusive value="3600"/>
+    <xs:fractionDigits value="3"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="maxPropfindDepthType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be one of 0, 1, or infinity.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="0"/>
+    <xs:enumeration value="1"/>
+    <xs:enumeration value="infinity"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="clientAuthType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be one of required, optional, or false.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="required"/>
+    <xs:enumeration value="optional"/>
+    <xs:enumeration value="false"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="authMethodType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be an authentication method. Valid authentication methods are basic, digest, and ssl.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="basic">
+      <xs:annotation>
+        <xs:documentation>
+          Use HTTP basic authentication.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="digest">
+      <xs:annotation>
+        <xs:documentation>
+          Use HTTP digest authentication.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="ssl">
+      <xs:annotation>
+        <xs:documentation>
+          Use SSL/TLS client certificate authentication.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="roleType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a role name.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:minLength value="1"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="messageSourcePolicyType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a web services message sender authentication requirement. Valid sender authentication requirements are sender and content.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="sender"/>
+    <xs:enumeration value="content"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="messageRecipientPolicyType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a web services message recipient authentication requirement. Valid recipient authentication requirements are before-content and after-content.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="before-content"/>
+    <xs:enumeration value="after-content"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="jndiNameType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a JNDI name.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="noWhitespaceTokenType"/>
+</xs:simpleType>
+
+<xs:simpleType name="jdbcIsolationLevelType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a JDBC transaction isolation level. Valid isolation levels are default, read-uncommitted, read-committed, repeatable-read, and serializable.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="default"/>
+    <xs:enumeration value="read-uncommitted"/>
+    <xs:enumeration value="read-committed"/>
+    <xs:enumeration value="repeatable-read"/>
+    <xs:enumeration value="serializable"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="jdbcConnectionValidationType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be false or a JDBC connection validation method. Valid methods are auto-commit, meta-data, and table.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="false"/>
+    <xs:enumeration value="auto-commit"/>
+    <xs:enumeration value="meta-data"/>
+    <xs:enumeration value="table"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="secureSessionCookieType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be one of dynamic, true or false.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="dynamic">
+      <xs:annotation>
+        <xs:documentation>
+          The JSESSIONID cookie is marked secure, only if the request was received on a secure connection.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="true">
+      <xs:annotation>
+        <xs:documentation>
+          The JSESSIONID cookie is always marked secure, even if the request was received on an unsecure connection.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+    <xs:enumeration value="false">
+      <xs:annotation>
+        <xs:documentation>
+          The JSESSIONID cookie is never marked secure, even if the request was received on a secure connection.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:enumeration>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="timeOfDayType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a time of day in 24-hour format between 0:00 and 23:59, inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:pattern value="(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="dayOfWeekType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a token representing a day of the week. Valid tokens are Sun, Mon, Tue, Wed, Thu, Fri, and Sat.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="Sun"/>
+    <xs:enumeration value="Mon"/>
+    <xs:enumeration value="Tue"/>
+    <xs:enumeration value="Wed"/>
+    <xs:enumeration value="Thu"/>
+    <xs:enumeration value="Fri"/>
+    <xs:enumeration value="Sat"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="dayOfMonthType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a day of the month between 1 and 31, inclusive.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="1"/>
+    <xs:maxInclusive value="31"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="monthType">
+  <xs:annotation>
+    <xs:documentation>
+      The value must be a token representing a month. Valid tokens are Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, and Dec.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="Jan"/>
+    <xs:enumeration value="Feb"/>
+    <xs:enumeration value="Mar"/>
+    <xs:enumeration value="Apr"/>
+    <xs:enumeration value="May"/>
+    <xs:enumeration value="Jun"/>
+    <xs:enumeration value="Jul"/>
+    <xs:enumeration value="Aug"/>
+    <xs:enumeration value="Sep"/>
+    <xs:enumeration value="Oct"/>
+    <xs:enumeration value="Nov"/>
+    <xs:enumeration value="Dec"/>
+  </xs:restriction>
+</xs:simpleType>
+
+</xs:schema>

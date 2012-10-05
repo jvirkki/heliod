@@ -1,0 +1,152 @@
+<!--
+ 
+  DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+ 
+  Copyright 2008 Sun Microsystems, Inc. All rights reserved.
+ 
+  THE BSD LICENSE
+ 
+  Redistribution and use in source and binary forms, with or without 
+  modification, are permitted provided that the following conditions are met:
+ 
+  Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer. 
+  Redistributions in binary form must reproduce the above copyright notice, 
+  this list of conditions and the following disclaimer in the documentation 
+  and/or other materials provided with the distribution. 
+ 
+  Neither the name of the  nor the names of its contributors may be
+  used to endorse or promote products derived from this software without 
+  specific prior written permission. 
+ 
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+  OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
+  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+-->
+<project name="Open Web Server 1.0 - Placeholder name" default="all">
+
+  <!-- ===================== Initialize Property Values =================== -->
+  <property name="src.dir"      location="."/>
+  <property name="make.dir"     location="../../make"/>
+  <property name="schema.dir"     location="../../schema"/>
+  <property name="external.dir" location="../../external"/>
+  <property name="build.dir"    location="${src.dir}/${obj.dir}"/>
+  <property name="classes.dir"  location="${build.dir}/classes"/>
+  <property name="jars.dir"     location="${build.dir}/jars"/>
+  <property name="javah.dir"    location="${internal.dir}/include/jni"/>
+  <property name="manifests.dir"    location="${src.dir}/manifests"/>
+
+  <!-- name of the schema for server.xml -->
+  <property name="server.schema.file" value="heliod-web-server_1_0.xsd"/>
+  <property name="xsd2cpp.pkg.dir" value="com/sun/webserver/xsd2cpp"/>
+
+  <!-- javac flags -->
+  <property name="debug"    value="on"/>
+  <property name="optimize" value="off"/>
+  <property name="source" value="1.5"/>
+  <property name="deprecation" value="off"/>
+
+  <!-- =================== HELP: ant -projecthelp ========================= -->
+  <target name="help" description="Print project help information">
+    <exec executable="gmake" dir="${src.dir}" failonerror="true">
+        <arg line="help"/>
+    </exec>
+  </target>
+
+  <!-- =================== MAIN/DEFAULT =================================== -->
+  <target name="all" depends="compile"
+          description="Compiles all sources">
+
+  </target>
+
+  <!-- =================== COMPILE: Top level ============================= -->
+  <target name="compile" depends="compile-xsd2cpp"
+          description="Top-level compile target">
+    <tstamp>
+      <format property="end.time" pattern="MM/dd/yyyy hh:mm aa"/>
+    </tstamp>
+    <echo message="Compile start time: ${start.time}"/>
+    <echo message="Compile end time:   ${end.time}"/>
+  </target>
+
+
+  <!-- =================== PUBLISH: Top level ============================= -->
+  <target name="publish"
+          description="Publish all components">
+  <echo message="Done.."/>
+  </target>
+
+
+  <!-- =================== CLEAN: Delete compile products ================= -->
+  <target name="clean"
+          description="Delete compiled files but not assembled files">
+    <delete dir="${classes.dir}"/>
+    <delete dir="${javah.dir}"/>
+  </target>
+
+  <!-- =================== CLOBBER: Delete everything ===================== -->
+  <target name="clobber"
+          description="Delete built files and external components">
+    <delete dir="${build.dir}"/>
+  </target>
+
+  <!-- =================== gmake: Invoke gmake from a Java IDE ========== -->
+  <target name="gmake"
+           description="Invoke a gmake target from a Java IDE like Netbeans"
+           if="gmake.args">
+
+    <!-- Customize the IDE's ANT settings and set ${gmake.args} to list the 
+         targets you want to invoke -->
+    <exec executable="gmake" dir="${src.dir}" failonerror="true">
+        <arg line="${gmake.args}"/>
+    </exec>
+  </target>
+  
+  <!-- =================== RECOMPILE: clean + compile ===================== -->
+  <target name="recompile" depends="clean, compile"
+          description="Equivalent to clean followed by compile">
+  </target>
+
+  <!-- =================== COMPILE: Create Directories ==================== -->
+  <target name="compile-init"
+          description="Create build directories and compile ANT tasks">
+    <tstamp>
+      <format property="start.time" pattern="MM/dd/yyyy hh:mm aa"/>
+    </tstamp>
+
+    <condition property="debuglevel" value="lines,source">
+        <istrue value="${optimize}"/>
+    </condition>
+    <condition property="debuglevel" value="lines,vars,source">
+        <isfalse value="${optimize}"/>
+    </condition>
+    <echo message="Debug level is ${debuglevel}; debug is ${debug}, opt is ${optimize}"/>
+    <mkdir dir="${build.dir}"/>
+    <mkdir dir="${classes.dir}"/>
+    <mkdir dir="${javah.dir}"/>
+  </target>
+
+  
+  <!-- =================== COMPILE: xsd2cpp =========================== -->
+  <target name="compile-xsd2cpp" depends="compile-init"
+          description="Compile xsd2cpp sources">
+    <echo message="Compiling xsd2cpp"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" source="${source}"
+           failonerror="true"
+           deprecation="${deprecation}"
+           debug="${debug}" debuglevel="${debuglevel}" optimize="${optimize}">
+      <include name="${xsd2cpp.pkg.dir}/**"/>
+    </javac>
+  </target>
+
+
+</project>

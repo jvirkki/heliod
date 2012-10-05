@@ -1,0 +1,143 @@
+#!/bin/sh
+
+#
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+#
+# Copyright 2008 Sun Microsystems, Inc. All rights reserved.
+#
+# THE BSD LICENSE
+#
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer. 
+# Redistributions in binary form must reproduce the above copyright notice, 
+# this list of conditions and the following disclaimer in the documentation 
+# and/or other materials provided with the distribution. 
+#
+# Neither the name of the  nor the names of its contributors may be
+# used to endorse or promote products derived from this software without 
+# specific prior written permission. 
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+# OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+SERVER_CONFIG_DIR="%%%WS_INSTANCE_ROOT%%%/%%%WS_INSTANCE_NAME%%%/config"
+SERVER_INSTALL_ROOT="%%%WS_INSTALL_ROOT%%%"
+SERVER_BIN_DIR="%%%WS_INSTALL_ROOT%%%/bin"
+SERVER_LIB_DIR="%%%WS_INSTALL_ROOT%%%/lib"
+SERVER_BIN=webservd-wdog
+
+# Add path to server binaries to PATH
+PATH="${SERVER_BIN_DIR}:${SERVER_LIB_DIR}:/bin:${PATH}"; export PATH
+
+SERVER_LIB_PATH="${SERVER_LIB_DIR}:%%%WS_EXTRA_LIBPATH%%%"
+
+# Set LD_LIBRARY_PATH for Solaris and Linux
+LD_LIBRARY_PATH="${SERVER_LIB_PATH}:${LD_LIBRARY_PATH}"; export LD_LIBRARY_PATH
+
+# Set LIBPATH for AIX
+LIBPATH="${SERVER_LIB_PATH}:/usr/lib/threads:/usr/lib:/lib:${LIBPATH}"; export LIBPATH
+
+# set as per http://www.ibm.com/developerworks/java/jdk/aix/j532/sdkguide.aix32.html#jni
+AIXTHREAD_SCOPE=S; export AIXTHREAD_SCOPE
+AIXTHREAD_MUTEX_DEBUG=OFF; export AIXTHREAD_MUTEX_DEBUG
+AIXTHREAD_RWLOCK_DEBUG=OFF; export AIXTHREAD_RWLOCK_DEBUG
+AIXTHREAD_COND_DEBUG=OFF; export AIXTHREAD_COND_DEBUG
+
+# Set SHLIB_PATH for HP-UX
+SHLIB_PATH="${SERVER_LIB_PATH}:${SHLIB_PATH}"; export SHLIB_PATH
+
+# Parse instance-specific configuration information from server.xml
+eval `parsexml "${SERVER_CONFIG_DIR}"`
+if [ $? -ne 0 ] ; then
+    exit 1
+fi
+
+# Add path to any platform-specific server binaries to PATH
+if [ -n "${SERVER_PLATFORM_SUBDIR}" ] ; then
+    PATH="${SERVER_BIN_DIR}/${SERVER_PLATFORM_SUBDIR}:${SERVER_LIB_DIR}/${SERVER_PLATFORM_SUBDIR}:${PATH}"; export PATH
+    SERVER_LIB_DIR_64="${SERVER_LIB_DIR}/${SERVER_PLATFORM_SUBDIR}"
+    SERVER_LIB_PATH_64="${SERVER_LIB_DIR_64}"
+fi
+
+# Add instance-specific information to LD_LIBRARY_PATH for Solaris and Linux
+LD_LIBRARY_PATH="${SERVER_LIB_PATH}:${SERVER_JVM_LIBPATH}:${LD_LIBRARY_PATH}"; export LD_LIBRARY_PATH
+LD_LIBRARY_PATH_64="${SERVER_LIB_PATH_64}:${SERVER_JVM_LIBPATH}:${LD_LIBRARY_PATH_64}" export LD_LIBRARY_PATH_64
+
+# Add instance-specific information to LIBPATH for AIX
+LIBPATH="${SERVER_LIB_PATH}:${SERVER_JVM_LIBPATH}:${LIBPATH}"; export LIBPATH
+
+# Add instance-specific information to SHLIB_PATH for HP-UX
+SHLIB_PATH="${SERVER_LIB_PATH}:${SERVER_JVM_LIBPATH}:${SHLIB_PATH}"; export SHLIB_PATH
+
+# Preload libumem to improve performance on Solaris 10
+LIBUMEM_32=/usr/lib/libumem.so
+if [ -f "${LIBUMEM_32}" ] ; then
+    if [ `uname -r | sed s/\\\.//` -ge 510 ] ; then
+        LD_PRELOAD_32="${LIBUMEM_32} ${LD_PRELOAD_32}"; export LD_PRELOAD_32
+    fi
+fi
+LIBUMEM_64=/usr/lib/64/libumem.so
+if [ -f "${LIBUMEM_64}" ] ; then
+    if [ `uname -r | sed s/\\\.//` -ge 510 ] ; then
+        LD_PRELOAD_64="${LIBUMEM_64} ${LD_PRELOAD_64}"; export LD_PRELOAD_64
+    fi
+fi
+
+# Preload libCld to resolve -compat=4/-compat=5 C++ ABI issues on Solaris
+LIBCLD="libCld.so"
+if [ -f "${SERVER_LIB_DIR}/${LIBCLD}" ] ; then
+    LD_PRELOAD_32="${LIBCLD} ${LD_PRELOAD_32}"; export LD_PRELOAD_32
+fi
+
+if [ $# -eq 0 ] ; then
+    COMMAND=--start;
+elif [ "$1" = "-i" ] ; then
+    COMMAND=--start;
+else
+    COMMAND=$1;
+    shift;
+fi
+
+case $COMMAND in
+    --start|-start)
+        ${SERVER_BIN} -d "${SERVER_CONFIG_DIR}" -r "${SERVER_INSTALL_ROOT}" -t "${SERVER_TEMP_DIR}" -u "${SERVER_USER}" $@
+        if [ $? -ne 0 ] ; then
+            exit 1
+        fi
+        ;;
+    --shell|-shell)
+        cd "${SERVER_CONFIG_DIR}"
+        /bin/sh
+        ;;
+    --version|-version)
+        ${SERVER_BIN} -d "${SERVER_CONFIG_DIR}" -r "${SERVER_INSTALL_ROOT}" -t "${SERVER_TEMP_DIR}" -u "${SERVER_USER}" -i -v $@
+        if [ $? -ne 0 ] ; then
+            exit 1
+        fi
+        ;;
+    --configtest|-configtest)
+        ${SERVER_BIN} -d "${SERVER_CONFIG_DIR}" -r "${SERVER_INSTALL_ROOT}" -t "${SERVER_TEMP_DIR}" -u "${SERVER_USER}" -i -c $@
+        if [ $? -ne 0 ] ; then
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Usage: `basename $0` [--start|--shell|--configtest|--version]"
+        exit 1
+        ;;
+esac
+
+exit 0

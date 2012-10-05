@@ -1,0 +1,113 @@
+#!/usr/bin/perl
+
+#
+# THE BSD LICENSE
+#
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer. 
+# Redistributions in binary form must reproduce the above copyright notice, 
+# this list of conditions and the following disclaimer in the documentation 
+# and/or other materials provided with the distribution. 
+#
+# Neither the name of the  nor the names of its contributors may be
+# used to endorse or promote products derived from this software without 
+# specific prior written permission. 
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+# OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+# Copyright 2011 jyri@virkki.com
+
+#
+# This is filled at tarball creation time with any platform-specific lib
+# directories needed, as defined by RUNTIME_LIBDIR in the platform-specific
+# make/defines_* file.
+#
+$WS_EXTRA_LIBPATH="%%%WS_EXTRA_LIBPATH%%%";
+
+$RPV = "./bin/replace_vars.pl";
+
+if (! -e $RPV) {
+    die "$RPV not found!\n";
+}
+
+$WS_INSTALL_ROOT=`pwd`; chomp $WS_INSTALL_ROOT;
+$WS_INSTANCE_ROOT=$WS_INSTALL_ROOT;
+$INT_ENV_PATH="$WS_INSTALL_ROOT/lib";
+
+print "\nThis script will create a new server instance...\n";
+
+$WS_SERVER_NAME=`hostname`; chomp $WS_SERVER_NAME;
+print "Enter server name (default = $WS_SERVER_NAME): ";
+$line = <stdin>;
+chomp $line;
+if ($line ne "") { $WS_SERVER_NAME = $line; }
+
+$WS_HTTP_PORT=8080;
+print "Enter HTTP port number (default = $WS_HTTP_PORT): ";
+$line = <stdin>;
+chomp $line;
+if ($line ne "") { $WS_HTTP_PORT = $line; }
+
+$WS_SERVER_USER=`whoami`; chomp $WS_SERVER_USER;
+print "Enter runtime user (default = $WS_SERVER_USER): ";
+$line = <stdin>;
+chomp $line;
+if ($line ne "") { $WS_SERVER_USER = $line; }
+
+$WS_CONFIG_NAME="https-$WS_SERVER_NAME";
+$WS_INSTANCE_NAME=$WS_CONFIG_NAME;
+$INT_INSTANCE_NAME=$WS_CONFIG_NAME;
+$WS_SERVER_TEMPDIR="/tmp/$WS_CONFIG_NAME.tmp";
+
+print "\nCreating $WS_CONFIG_NAME on port $WS_HTTP_PORT running as ";
+print "$WS_SERVER_USER\n";
+
+if (-e $WS_CONFIG_NAME) {
+    die "./$WS_CONFIG_NAME already exists!"
+}
+
+$vars = "WS_INSTALL_ROOT=$WS_INSTALL_ROOT   INT_ENV_PATH=$INT_ENV_PATH WS_INSTANCE_ROOT=$WS_INSTANCE_ROOT  WS_CONFIG_NAME=$WS_CONFIG_NAME   WS_INSTANCE_NAME=$WS_INSTANCE_NAME   INT_INSTANCE_NAME=$INT_INSTANCE_NAME   WS_SERVER_USER=$WS_SERVER_USER   WS_HTTP_PORT=$WS_HTTP_PORT   WS_SERVER_NAME=$WS_SERVER_NAME   WS_INSTANCE_ROOT=$WS_INSTANCE_ROOT WS_SERVER_TEMPDIR=$WS_SERVER_TEMPDIR WS_EXTRA_LIBPATH=$WS_EXTRA_LIBPATH";
+
+
+mkdir $WS_CONFIG_NAME;
+
+cmd("cd $WS_CONFIG_NAME && /bin/cp -r ../lib/installer/https-template/* .");
+
+cmd("$RPV $vars INPUT_DIR=./$WS_CONFIG_NAME/config OUTPUT_DIR=./$WS_CONFIG_NAME/config");
+
+cmd("rm -rf $WS_CONFIG_NAME/config/*.template");
+
+cmd("$RPV $vars INPUT_DIR=./$WS_CONFIG_NAME/bin OUTPUT_DIR=./$WS_CONFIG_NAME/bin");
+
+cmd("rm -rf $WS_CONFIG_NAME/bin/*.template");
+
+cmd("chmod +x $WS_CONFIG_NAME/bin/*");
+
+cmd("rm -rf $WS_SERVER_TEMPDIR");
+mkdir $WS_SERVER_TEMPDIR;
+cmd("chmod 700 $WS_SERVER_TEMPDIR");
+
+print "\nDone!\n";
+print "Now: cd $WS_CONFIG_NAME && ./bin/startserv\n";
+
+
+sub cmd
+{
+    my ($cmd) = @_;
+    print "$cmd\n";
+    system($cmd);
+}

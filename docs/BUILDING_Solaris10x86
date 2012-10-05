@@ -1,0 +1,42 @@
+
+Build-time requirements
+=======================
+  gmake
+  ant
+  Sun Studio compiler suite
+
+Make sure gmake and ant are in your PATH.
+The default location for the compiler is set to /opt/solstudio12.2 in
+make/defines_i86pc_SOLARIS_5.10.mk, or override it with the env var
+SUNWSPRO_DIR if it is elsewhere.
+
+Missing libraries
+=================
+  mozilla LDAP SDK (https://wiki.mozilla.org/LDAP_C_SDK)
+  pcre (http://www.pcre.org/)
+  xerces-c (http://xerces.apache.org/xerces-c/)
+  xalan-c (http://xml.apache.org/xalan-c/)
+
+You'll need to arrange to build and install these libraries on the system.
+As of 2011/02 I have succesfully built with versions:
+
+  ldapdsk 6.0.5
+  pcre 8.02
+  xerces-c 2.7.0
+  xalan-c 1.10.0
+
+but others may also work for you.
+
+By default the build expects to find these libraries in a directory tree
+of the form:
+
+  $SBC/$COMPONENT/$OBJDIR/[include|lib|...]
+
+Environment variable SBC needs to be set to point at the location of this
+directory.  $COMPONENT is the library name (ldapsdk|pcre|xalan-c|xerces-c)
+and $OBJDIR is a variable used in the build system, for Solaris 10 x86
+it will be SunOS5.10_i86pc
+
+These defaults are set in defines_i86pc_SOLARIS_5.10.mk, you could override
+them there if you must.
+

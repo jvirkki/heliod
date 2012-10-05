@@ -1,0 +1,30 @@
+
+First install the following packages:
+
+  ant default-jdk g++ libicu-dev libnss3-dev libpcre3-dev libsasl2-dev
+  libxalan110-dev zlib1g-dev
+
+
+Missing libraries
+=================
+  mozilla LDAP SDK (https://wiki.mozilla.org/LDAP_C_SDK)
+
+You'll need to arrange to build and install these libraries on the system.
+As of 2011/02 I have succesfully built with versions:
+
+  ldapdsk 6.0.5
+
+but others may also work for you.
+
+By default the build expects to find these libraries in a directory tree
+of the form:
+
+  $SBC/$COMPONENT/$OBJDIR/[include|lib|...]
+
+Environment variable SBC needs to be set to point at the location of this
+directory.  $COMPONENT is the library name (ldapsdk) and $OBJDIR is a
+variable used in the build system, Linux2.4_DBG.OBJ.
+
+These defaults are set in defines_Debian, you could override them there
+if you must.
+

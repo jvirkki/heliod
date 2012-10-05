@@ -1,0 +1,15 @@
+sparc {
+    SUNW_1.2;
+    SUNW_1.1;
+    SUNWprivate;
+}
+sparcv9 {
+    SUNW_1.2;
+    SUNW_1.1;
+    SUNWprivate;
+}
+i386 {
+    SUNW_1.2;
+    SUNW_1.1;
+    SUNWprivate;
+}

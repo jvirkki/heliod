@@ -1,0 +1,9 @@
+sparc {
+    libjvm.so;
+}
+sparcv9 {
+    libjvm.so;
+}
+i386 {
+    libjvm.so;
+}

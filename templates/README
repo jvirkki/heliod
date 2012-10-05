@@ -1,0 +1,25 @@
+
+Now that you've extracted the tarball, there are still a couple steps
+to do before you can run the server.
+
+1. Run the post-install script:
+
+   % ./bin/post-install
+
+   This will fill in the current location into a few template files.
+
+   Note: This ties the installation to the current filesystem location.
+   If you want to run it elsewhere, extract the tarball there first and
+   then run the post-install script.
+
+2. Create a server instance:
+
+   % ./bin/create-instance
+
+   Answer the prompts, most defaults are probably ok. This will create
+   the actual server instance. If all goes well you should be able to
+   start the server now:
+
+   % cd https-*     (* is the name you picked)
+   % ./bin/startserv
+

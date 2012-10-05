@@ -1,0 +1,3 @@
+!include $(MOZ_SRC)\ns\config\rules.mak
+
+

@@ -1,0 +1,91 @@
+# This makefile builds the cgistub 
+# The reason for this being different is to prevnet it from linkign 
+# against any threaded versions of libraries
+
+
+BUILD_ROOT=../../..
+include ${BUILD_ROOT}/make/defines.mk
+
+
+MODULE=LibSAFs
+
+
+C_FLAGS=-DUSING_NSAPI
+CC_FLAGS=
+LD_FLAGS=
+LD_LIBS=
+LD_LIBDIRS=
+LD_RPATHS=
+SYSTEM_LINK_LIBS=
+
+ifeq ($(BUILD_VARIANT),OPTIMIZED)
+ifeq ($(OS_ARCH),SunOS)
+C_FLAGS += -xO4
+endif
+ifeq ($(OS_ARCH),Linux)
+ifeq ($(OS_RELEASE),2.2)
+C_FLAGS += -O2
+else
+C_FLAGS += -O3
+endif
+endif
+ifeq ($(OS_ARCH),HP-UX)
+C_FLAGS += -O
+endif
+ifeq ($(OS_ARCH),AIX)
+C_FLAGS += -O2
+endif
+else # For all debug UNIX platforms 
+C_FLAGS += -g
+endif
+
+ifeq ($(OS_ARCH),SunOS)
+C_FLAGS += -DSOLARIS
+LD_LIBS += -lsocket -lnsl -ldl
+LD_FLAGS += -norunpath 
+ifeq ($(BUILD_ARCH),AMD64)
+C_FLAGS += -xarch=amd64
+LD_FLAGS += -xarch=amd64 
+else
+ifeq ($(BUILD_ARCH),SPARCV9)
+C_FLAGS += -xarch=v9
+LD_FLAGS += -xarch=v9
+else
+ifneq ($(OS_CPU),i86pc)
+C_FLAGS += -xchip=ultra
+endif
+endif
+endif
+endif
+
+ifeq ($(OS_ARCH),AIX)
+### Special flags to make recvmsg() still work
+C_FLAGS += -D_BSD=43 -DCOMPAT_43  -DAIX
+LD_LIBS = -lbsd
+endif
+
+ifneq ($(OS_ARCH),IRIX)
+C_FLAGS += -DHAVE_VFORK
+endif
+
+ifeq ($(OS_ARCH),OSF1)
+C_FLAGS += -DOSF1 -DOSF1V4_0 -verbose
+endif
+
+ifeq ($(OS_ARCH),HP-UX)
+C_FLAGS += -DHPUX +Z +DAportable +DS2.0 
+endif
+
+ifeq ($(OS_ARCH),Linux)
+C_FLAGS += -DLINUX -DUSE_POSIXFDPASSING
+endif
+
+all::
+
+EXE_TARGET=Cgistub
+EXE_OBJS=Cgistub
+
+SHIP_PRIVATE_BINARIES=Cgistub
+
+# this should always be last!
+include ${BUILD_ROOT}/make/rules.mk

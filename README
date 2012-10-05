@@ -1,0 +1,16 @@
+
+These sources are a fork of the 'Open Web Server' code published by
+Sun Microsystems under the BSD license (see LICENSE.txt).
+
+Sun first open sourced the code in January 2009:
+
+    http://blogs.sun.com/dzm/date/20090113
+
+The last public update to the code by Sun happened in January 2010.
+It has been over a year now and there have been no more updates.  At
+this point I suspect no further updates will be forthcoming, so I am
+forking the code to preserve it for posterity in case the upstream
+repository disappears.
+
+Look in the docs directory for more reading material.
+

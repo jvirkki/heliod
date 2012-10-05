@@ -1,0 +1,33 @@
+
+If you're lucky this will work:
+
+  % make tarball
+
+You'll end up with ./work/heliod-*.tar.gz
+
+You need GNU make, so if it is called something else than 'make' on your
+system (such as gmake on Solaris), substitute accordingly.
+
+Extract the tarball somewhere convenient and follow the instructions
+in the top-level README for post-install steps.
+
+If you want to work with the code, you can also do:
+
+  % make server install
+
+This will install the server under ./work/* instead of making a tarball,
+so you can run it right from the source workspace. You don't need to do
+any post-install steps in this scenario.
+
+
+If it didn't work, check the BUILDING_$PLATFORM file for more hints on
+building it on your platform. If there is no such file, you get to be
+the first to try to make it work there.
+
+In the long history of this codebase it has been commercially built on
+just about every platform of interest so it is highly portable. In fact,
+you'll find that the build system already includes support for many
+more platforms than those listed here, so it should be relatively easy.
+That said, some of those platforms have not been built in a long time
+so may require more work.
+

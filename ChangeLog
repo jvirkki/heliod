@@ -1,0 +1,13 @@
+2011-03-08  Jyri J. Virkki  <jyri@virkki.com>
+
+	* version 0.1
+
+	    Build can create a tarball
+	    Added rudimentary installation support for tarball-based install
+	    Built on Debian Linux and Solaris 10 x86 (32bit) only for now
+	    Removed Sun branding
+
+2011-02-22  Jyri J. Virkki  <jyri@virkki.com>
+
+	* Forked the code from
+	    ssh://anon@hg.opensolaris.org/hg/webstack/webserver
