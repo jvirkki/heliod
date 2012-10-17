@@ -34,7 +34,7 @@
 # Modified 2011 jyri@virkki.com
 
 BUILD_ROOT=..
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 ifneq ($(OS_ARCH),WINNT)
 HERE=$(shell pwd)
@@ -120,7 +120,7 @@ genconstants:
 	$(ECHO) PLATFORM_JES_ANT_CP=$(PLATFORM_JES_ANT_CP) >> $(CONSTANTS_FILE)
 	$(ECHO) PLATFORM_JES_MFWK_HOME=$(PLATFORM_JES_MFWK_HOME) >> $(CONSTANTS_FILE)
 	$(ECHO) PLATFORM_JES_PATCH_ID=$(PATCH_ID) >> $(CONSTANTS_FILE)
-	$(PERL5) genProductConstants.pl $(CONSTANTS_FILE)
+	$(PERL) genProductConstants.pl $(CONSTANTS_FILE)
 
 NO_STD_PUBLISH_RULE=1
 publish:

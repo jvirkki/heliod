@@ -39,7 +39,7 @@ USE_NSPR=1
 USE_MAPFILE=1
 
 MODULE=shtml
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 all::
 

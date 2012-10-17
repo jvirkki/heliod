@@ -42,7 +42,7 @@ USE_XERCESC=1
 
 MODULE=LibAdmin
 
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 all::
 

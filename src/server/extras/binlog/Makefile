@@ -40,7 +40,7 @@ USE_XERCESC=1
 USE_XALANC=1
 
 MODULE=binlog
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 all::
 

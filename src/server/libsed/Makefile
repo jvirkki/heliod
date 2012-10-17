@@ -34,7 +34,7 @@
 BUILD_ROOT=../../..
 USE_NSPR=1
 
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 MODULE=libsed
 

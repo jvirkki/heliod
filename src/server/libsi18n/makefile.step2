@@ -37,7 +37,7 @@
 BUILD_ROOT=../../..
 USE_NSPR=1
 MODULE=libsi18n
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 LD_LIB_PATH=../../support/libdbm/$(OBJDIR):$(NSPR_LIBDIR)
 

@@ -36,7 +36,7 @@ USE_NSPR=1
 USE_MAPFILE=1
 HP_NO_CORBA_PCH=1
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 MODULE=support
 
 SHIP_PRIVATE_DYNAMIC_LIBRARIES=$(DLL_TARGET)

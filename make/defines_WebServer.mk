@@ -37,6 +37,10 @@ BRAND_NAME = "heliod"
 
 #build Numbers
 # major, minor are numeric
+#
+# NOTE: Default server header is defined in schema/heliod-web-server_1_0.xsd
+# so be sure to update version there as well whenever changing these.
+
 VER_MAJOR=0
 VER_MINOR=2
 
@@ -145,7 +149,7 @@ DEFINES+= -DENCRYPT_PASSWORDS
 DEFINES+= -DNSPR20
 DEFINES+= -DSPAPI20
 DEFINES+= -DPEER_SNMP
-DEFINES+= -DOSVERSION=$(OSVERSION)
+#  DEFINES+= -DOSVERSION=$(OSVERSION)
 
 ifdef FEAT_PLATFORM_STATS
 DEFINES+= -DPLATFORM_SPECIFIC_STATS_ON

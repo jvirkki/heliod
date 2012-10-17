@@ -38,7 +38,7 @@ BUILD_ROOT=../../../..
 USE_NSPR=1
 MODULE=fastcgi
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 all::
 

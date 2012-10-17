@@ -327,12 +327,8 @@
 #define NEED_FILIO
 #define NEED_GHN_PROTO
 #define NET_SOCKETS
-#if OSVERSION > 504 
 #define SA_HANDLER_T(x) x 
-#endif
-#if OSVERSION >= 506 
 #undef NEED_GHN_PROTO 
-#endif
 #define SEM_FLOCK
 #define SHMEM_MMAP_FLAGS MAP_SHARED
 

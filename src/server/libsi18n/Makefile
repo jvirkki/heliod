@@ -41,7 +41,7 @@ USE_MAPFILE=1
 # disable position independent code to improve execution speed
 NO_KPIC=1
 
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 MODULE=libsi18n
 

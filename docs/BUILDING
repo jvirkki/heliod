@@ -1,5 +1,9 @@
 
-If you're lucky this will work:
+Set the environment variable SBC to point at the location of your
+shared components directory hierarchy. See $TOP/sbc/README for
+help in creating your SBC.
+
+After that, if you're lucky this will work:
 
   % make tarball
 

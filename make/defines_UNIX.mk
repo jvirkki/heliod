@@ -52,9 +52,7 @@ CPPCMD		=$(C) -E
 C++C            =$(CC)
 
 ### COMMON UNIX BINARIES
-PERL_DIR        =$(NSTOOL_ROOT)
-PERL5         	=$(PERL_DIR)/bin/perl5
-PERL		=$(PERL_DIR)/bin/perl
+PERL		=$(TOOL_ROOT)/bin/perl
 RM		=$(TOOL_ROOT)/bin/rm
 LS		=$(TOOL_ROOT)/bin/ls
 CP		=$(TOOL_ROOT)/bin/cp

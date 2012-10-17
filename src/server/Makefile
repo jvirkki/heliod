@@ -32,7 +32,7 @@
 #
 
 BUILD_ROOT=../..
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 MODULE=lib 
 DIRS=httpdaemon base ldaputil frame libaccess libadmin safs libsi18n libcrypt libdrcache httpparser libsed libserverxml libproxy shtml extras
 

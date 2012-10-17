@@ -35,9 +35,5 @@ include ${BUILD_ROOT}/make/rules_COMMON.mk
 ifdef BUILD_JAVA
 include ${BUILD_ROOT}/make/rules_JAVA_JDK_1.$(JAVA_VERSION).mk
 else
-include ${BUILD_ROOT}/make/rules_${PLATFORM}.mk
-endif
-
-ifdef PROJECT
-include $(BUILD_ROOT)/make/rules_$(PROJECT).mk
+include ${BUILD_ROOT}/make/rules_${BASE_STRING}.mk
 endif

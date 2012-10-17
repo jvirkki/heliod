@@ -37,12 +37,14 @@ ifndef SBC
 $(error Build needs SBC envvar defined to find dependency libraries)
 endif
 
+LDAPSDK_VERSION=6_0_5
+
 NSPR_INC=-I/usr/include/nspr
 NSPR_LIBDIR=
 NSS_INC=-I/usr/include/nss
 NSS_LIBDIR=/usr/lib/nss
-LDAPSDK_INC=-I$(SBC)/ldapsdk/$(OBJDIR)/include
-LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(OBJDIR)/lib
+LDAPSDK_INC=-I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
+LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/lib
 ZLIB_INC=
 ZLIB_LIBDIR=
 XERCESC_INC=
@@ -57,5 +59,3 @@ SASL_INC=
 SASL_LIBDIR=
 
 RUNTIME_LIBDIR=$(NSS_LIBDIR)
-
-TARBALL=${BRAND_NAME}-${PRODUCT_VERSION}-debian

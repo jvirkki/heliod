@@ -43,7 +43,7 @@ USE_XERCESC=1
 USE_ZLIB=1
 
 MODULE=LibSAFs
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 all::
 

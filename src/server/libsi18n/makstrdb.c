@@ -118,14 +118,19 @@ XP_MakeStringDatabase(void)
   RESOURCE_TABLE* table;
   NSRESHANDLE hresdb;
   char DBTlibraryName[128];
-  
+
+  if (strlen(DATABASE_NAME) < 5) {
+    printf("Error creating database %s, name not defined\n",DATABASE_NAME);
+    return 1;
+  }
+
   /* Creating database */
   hresdb = NSResCreateTable(DATABASE_NAME, NULL);
   if (hresdb==0) {
     printf("Error creating database %s\n",DATABASE_NAME);
     return 1;
   }
- 
+
   j = 0;
   while (table=allxpstr[j++].restable) {
     LibraryName = table->str;

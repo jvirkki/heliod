@@ -1,4 +1,8 @@
 #
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+#
+# Copyright 2011-2012 Jyri J. Virkki. All rights reserved.
+#
 # THE BSD LICENSE
 #
 # Redistribution and use in source and binary forms, with or without 
@@ -27,38 +31,46 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# Copyright 2011 jyri@virkki.com
 
 BUILD_ROOT=../..
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 # 
 # publish will copy into the staging lib directory those libraries which
 # are needed by each platform at runtime which are not otherwise available.
-# 
+#
+
 
 publish:
 	@echo sbc publish copying libraries needed by runtime
-	@echo BUILD_OS is $(BUILD_OS)
-ifeq ($(BUILD_OS),Linux)
-ifeq ($(LINUX_DISTRO),Debian)
-	@echo Linux.Debian needs ldapsdk in $(WORK_ROOT)/lib
-	(cd $(LDAPSDK_LIBDIR) && tar cf - *.so) | \
-		(cd $(WORK_ROOT)/lib && tar xf -)
-endif
+	@echo Destination base is $(WORK_ROOT)
+
+ifdef SBC_PUBLISH_LDAPSDK
+	ORIGIN_DIR=$(LDAPSDK_LIBDIR) $(MAKE) copy_component_so
 endif
 
-ifeq ($(BUILD_OS),SOLARIS)
-	@echo Solaris needs ldapsdk, xercesc, xalanc, pcre $(WORK_ROOT)/lib
-	(cd $(LDAPSDK_LIBDIR) && tar cf - *.so) | \
-		(cd $(WORK_ROOT)/lib && tar xf -)
-	(cd $(XERCESC_LIBDIR) && tar cf - *) | \
-		(cd $(WORK_ROOT)/lib && tar xf -)
-	(cd $(XALANC_LIBDIR) && tar cf - *) | \
-		(cd $(WORK_ROOT)/lib && tar xf -)
-	(cd $(PCRE_LIBDIR) && tar cf - *) | \
-		(cd $(WORK_ROOT)/lib && tar xf -)
+ifdef SBC_PUBLISH_XERCESC
+	ORIGIN_DIR=$(XERCESC_LIBDIR) $(MAKE) copy_component_all
 endif
+
+ifdef SBC_PUBLISH_XALANC
+	ORIGIN_DIR=$(XALANC_LIBDIR) $(MAKE) copy_component_all
+endif
+
+ifdef SBC_PUBLISH_PCRE
+	ORIGIN_DIR=$(PCRE_LIBDIR) $(MAKE) copy_component_all
+endif
+
+
+copy_component_so:
+	@echo Copying shared libraries from $(ORIGIN_DIR)
+	(cd $(ORIGIN_DIR) && tar cf - *.so) | \
+		(cd $(WORK_ROOT)/lib && tar xf -) || exit 255 ;
+
+copy_component_all:
+	@echo Copying all files from $(ORIGIN_DIR)
+	(cd $(ORIGIN_DIR) && tar cf - *) | \
+		(cd $(WORK_ROOT)/lib && tar xf -) || exit 255 ;
 
 clobber:
 	@echo sbc clobber

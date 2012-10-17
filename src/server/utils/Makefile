@@ -42,7 +42,7 @@ USE_XALANC=1
 USE_LDAPSDK=1
 USE_PCRE=1
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 DIRS=true
 

@@ -35,7 +35,7 @@
 # servers. Cross-platform I/O and other generic functions are
 # provided here.
 BUILD_ROOT=../../..
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 MODULE=LibCrypt
 

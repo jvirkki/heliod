@@ -58,8 +58,6 @@ YACC            =/usr/ccs/bin/yacc
 LD		=$(PRE_LD) /usr/ccs/bin/ld
 PROFILER	=$(SUNWSPRO_DIR)/bin/profile
 FTP		=/usr/bin/ftp
-PERL		=/usr/bin/perl
-PERL5		=/usr/bin/perl
 LINT		=$(SUNWSPRO_DIR)/bin/lint
 STRIP		=/usr/ccs/bin/strip -x
 SPEC2MAP	=/usr/lib/abi/spec2map -a i386
@@ -158,6 +156,3 @@ SASL_LIBDIR=
 PLATFORM_LIBPATH=$(NSS_LIBDIR):$(LDAPSDK_LIBDIR):$(XERCESC_LIBDIR):$(XALANC_LIBDIR):$(PCRE_LIBDIR)
 
 RUNTIME_LIBDIR=$(NSS_LIBDIR)
-
-TARBALL=${BRAND_NAME}-${PRODUCT_VERSION}-solaris10_i86pc
-

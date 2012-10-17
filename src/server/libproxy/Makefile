@@ -36,7 +36,7 @@ USE_NSPR=1
 USE_CLIENTLIBS=1
 USE_XERCESC=1
 
-include ${BUILD_ROOT}/make/defines.mk
+include ${BUILD_ROOT}/make/base.mk
 
 MODULE=libproxy
 

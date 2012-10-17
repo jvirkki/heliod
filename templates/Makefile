@@ -42,7 +42,7 @@ USE_SMARTHEAP=1
 USE_ZLIB=1
 USE_PCRE=1
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 ifndef WS_INSTALL_ROOT
 WS_INSTALL_ROOT=$(WORK_ROOT)

@@ -46,7 +46,7 @@ USE_MAPFILE=1
 NO_KPIC=1
 
 MODULE=iasprototype
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 J2EE_PROPERTIES_FILE=j2eeplugin
 

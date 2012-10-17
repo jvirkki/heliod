@@ -38,7 +38,7 @@ USE_MAPFILE=1
 USE_XERCESC=1
 MODULE=fastcgi
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 all::
 

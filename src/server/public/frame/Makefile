@@ -35,7 +35,7 @@
 BUILD_ROOT=../../../..
 MODULE=netsiteInclude
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 MODULE=NSAPIInclude
 
 HDRDEST=$(WORK_ROOT)/$(INCLUDE_SUBDIR)/frame

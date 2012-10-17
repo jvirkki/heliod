@@ -68,3 +68,5 @@ clobber:
 	cd src; $(MAKE) $(STDOPTS) clobber
 	cd src/server/public && $(MAKE) $(STDOPTS) clobber
 	rm -rf work internal
+
+clean: clobber

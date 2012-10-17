@@ -37,7 +37,7 @@ BUILD_ROOT=../..
 BUILD_JAVA=1
 USE_J2EE=
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 #
 # All default values for the variables defined in defines_JAVA_JDK_1.2.mk

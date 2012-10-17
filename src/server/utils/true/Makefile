@@ -34,7 +34,7 @@
 BUILD_ROOT=../../../..
 MODULE=true
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 EXE_TARGET=true
 EXE_OBJS=true

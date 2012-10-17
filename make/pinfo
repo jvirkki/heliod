@@ -1,0 +1,178 @@
+#!/usr/bin/env perl
+
+#
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+#
+# Copyright 2012 Jyri J. Virkki. All rights reserved.
+#
+# THE BSD LICENSE
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
+# Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# Neither the name of the  nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+# OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+
+if ($ARGV[0] eq "-o") { &show_os(); }
+elsif ($ARGV[0] eq "-v") { &show_os_variant(); }
+elsif ($ARGV[0] eq "-p") { &show_platform(); }
+elsif ($ARGV[0] eq "-r") { &show_os_release(); }
+elsif ($ARGV[0] eq "-bd") { &show_base_defines(); }
+elsif ($ARGV[0] eq "-br") { &show_base_rules(); }
+
+print STDERR "pinfo: ARGV[0] is $ARGV[0]\n";
+print "pinfo_BAD-ARGUMENT\n";
+exit;
+
+
+sub out
+{
+    print $_[0] . "\n";
+    exit;
+}
+
+
+sub get_os
+{
+    $UNAME_S = `uname -s`; chomp $UNAME_S;
+
+    if ($UNAME_S eq "Linux") { return "Linux"; }
+    if ($UNAME_S eq "SunOS") { return "SunOS"; }
+}
+
+
+sub get_os_release
+{
+    $os = &get_os();
+
+    if ($os eq "SunOS") {
+        $UNAME_R = `uname -r`; chomp $UNAME_R;
+        return ($UNAME_R);
+    }
+
+    if ($os eq "Linux") {
+        ($dist, $ver) = &which_linux();
+        return ($ver);
+    }
+}
+
+
+sub get_platform
+{
+    $UNAME_S = `uname -m`; chomp $UNAME_S;
+    return($UNAME_S);
+}
+
+
+sub get_os_variant
+{
+    $os = &get_os();
+    $os_version= &get_os_release();
+
+    if ($os eq "SunOS" && $os_version eq "5.10") {
+        return("Sun");
+    }
+
+    if ($os eq "SunOS" && $os_version eq "5.11") {
+        $oi = `grep OpenIndiana /etc/release`; chomp $oi;
+        if (length($oi) > 1) {
+            return("OpenIndiana");
+        }
+    }
+
+    if ($os eq "Linux") {
+        ($dist, $ver) = &which_linux();
+        return($dist);
+    }
+
+    return "unknown";
+}
+
+
+sub which_linux
+{
+    if (-f "/etc/debian_version") {
+        $VER = `head -c1 /etc/debian_version`; chomp $VER;
+        return ("debian", $VER);
+    }
+
+    return ("unknown", "unknown");
+}
+
+
+sub get_base_include
+{
+    $prefix = @_[0];
+    $base_os = &get_os();
+    $base_variant = &get_os_variant();
+    $base_platform = &get_platform();
+    $base_osversion = &get_os_release();
+    $base_bits = @ARGV[1];
+    $base_type = @ARGV[2];
+    $makedir = @ARGV[3];
+
+    $m = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
+        $base_osversion . "_" . $base_platform . "_" . $base_bits .
+        "_" . $base_type . ".mk";
+    if (-f $m) { return $m; }
+
+    $f = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
+        $base_osversion . "_" . $base_platform . "_" . $base_bits . ".mk";
+    if (-e $f) { return $f; }
+
+    $f = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
+        $base_osversion . "_" . $base_platform . ".mk";
+    if (-e $f) { return $f; }
+
+    $f = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
+        $base_osversion . ".mk";
+    if (-e $f) { return $f; }
+
+    $f = "$makedir/make/$prefix" . "_" . $base_os . "_" .
+        $base_variant . ".mk";
+    if (-e $f) { return $f; }
+
+    $f = "$makedir/make/$prefix" . "_" . $base_os . ".mk";
+    if (-e $f) { return $f; }
+
+    return "define_MISSING_$m";
+}
+
+
+sub show_base_defines
+{
+    out &get_base_include("defines");
+}
+
+
+sub show_base_rules
+{
+    out &get_base_include("rules");
+}
+
+
+sub show_os { out(&get_os); }
+sub show_platform { out(&get_platform); }
+sub show_os_release { out(&get_os_release); }
+sub show_os_variant { out(&get_os_variant); }

@@ -46,9 +46,6 @@ RCPUSER=ftpman
 #### TOOLS ####
 ###############
 
-# Versions
-PERL_VER	=v5
-
 # Directories:
 WORK_BASE	=$(BUILD_ROOT)/work
 INTERNAL_BASE	=$(BUILD_ROOT)/internal
@@ -293,3 +290,5 @@ AS_FLAGS        = $(AS_PREFLAGS) $(AS_OPTS) $(CC_DEFS) $(CC_INCL) \
                   $(AS_POSTFLAGS)
 
 NOSUCHFILE=/thisfilemustnotexist
+
+TARBALL=${BRAND_NAME}-${PRODUCT_VERSION}-${BASE_STRING}

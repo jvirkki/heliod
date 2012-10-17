@@ -34,7 +34,7 @@
 BUILD_ROOT=../..
 
 MODULE=tools 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 DIRS= \
       txt2c \

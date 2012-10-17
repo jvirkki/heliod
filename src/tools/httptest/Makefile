@@ -36,7 +36,7 @@ USE_NSPR=1
 USE_CLIENTLIBS=1
 USE_PCRE=1
 MODULE=httptests
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 all:: compile
 

@@ -36,7 +36,7 @@ USE_MAPFILE=1
 USE_NSPR=1
 MODULE=htaccess
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 LOCAL_DEF+= -DBUILD_DLL
 LOCAL_INC+= -I../.. -I../../../support

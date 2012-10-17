@@ -34,7 +34,7 @@ BUILD_ROOT=..
 TMPL=$(BUILD_ROOT)/templates
 INST=$(WORK_ROOT)/lib/installer
 
-include $(BUILD_ROOT)/make/defines.mk
+include $(BUILD_ROOT)/make/base.mk
 
 tarball: tree
 	 (cd $(WORK_BASE) && \
