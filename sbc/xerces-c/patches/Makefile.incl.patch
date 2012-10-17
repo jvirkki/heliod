@@ -1,0 +1,57 @@
+*** Makefile.incl.orig	Wed Sep  7 08:55:53 2005
+--- Makefile.incl.new	Thu Feb 24 17:51:16 2011
+***************
+*** 93,101 ****
+      endif
+  
+    else
+!     PLATFORM_COMPILE_OPTIONS = -KPIC -mt -xs -ptr$(XML_OBJ_DIR) \
+                                 -features=rtti -D${PLATFORM} -D_REENTRANT
+!     MAKE_SHARED = ${CXX} -D${PLATFORM} -G -ptr$(XML_OBJ_DIR) ${LDFLAGS}
+      MAKE_SHARED_C = ${CC} -D${PLATFORM} -G ${LDFLAGS}
+      ifeq (${TRANSCODER}, ICU)
+          ALLLIBS = -mt ${LIBS} -licuuc -licudata
+--- 93,101 ----
+      endif
+  
+    else
+!     PLATFORM_COMPILE_OPTIONS = -KPIC -mt -xs  \
+                                 -features=rtti -D${PLATFORM} -D_REENTRANT
+!     MAKE_SHARED = ${CXX} -D${PLATFORM} -G ${LDFLAGS}
+      MAKE_SHARED_C = ${CC} -D${PLATFORM} -G ${LDFLAGS}
+      ifeq (${TRANSCODER}, ICU)
+          ALLLIBS = -mt ${LIBS} -licuuc -licudata
+***************
+*** 520,526 ****
+      ifeq ($(MODULE), dom)
+        PLATFORM_COMPILE_OPTIONS  = -DDOM_PROJ $(COMMON_COMPILE_OPTIONS)
+      else
+!       PLATFORM_COMPILE_OPTIONS  = $(COMMON_COMPILE_OPTIONS) -ptr${TEMPLATESREPOSITORY}
+      endif
+      MAKE_SHARED = $(CXX) $(PLATFORM_COMPILE_OPTIONS) $(XML_INCL) ${LDFLAGS}
+      MAKE_SHARED_C = $(CC) $(PLATFORM_COMPILE_OPTIONS) $(XML_INCL) ${LDFLAGS}
+--- 520,526 ----
+      ifeq ($(MODULE), dom)
+        PLATFORM_COMPILE_OPTIONS  = -DDOM_PROJ $(COMMON_COMPILE_OPTIONS)
+      else
+!       PLATFORM_COMPILE_OPTIONS  = $(COMMON_COMPILE_OPTIONS) 
+      endif
+      MAKE_SHARED = $(CXX) $(PLATFORM_COMPILE_OPTIONS) $(XML_INCL) ${LDFLAGS}
+      MAKE_SHARED_C = $(CC) $(PLATFORM_COMPILE_OPTIONS) $(XML_INCL) ${LDFLAGS}
+***************
+*** 598,604 ****
+        ALLLIBS = ${LIBS} -lc -lrt
+      endif
+    else
+!     MAKE_SHARED = ${CXX} -D${PLATFORM} -shared -ptr ${XERCESCROOT}/.cxx_repository ${LDFLAGS}
+      PLATFORM_COMPILE_OPTIONS = -D${PLATFORM} -ptr ${XERCESCROOT}/.cxx_repository
+      ifeq (${TRANSCODER}, ICU)
+      ALLLIBS = ${LIBS} -L/usr/lib -L/usr/local/lib -L/usr/ccs/lib -licuuc -licudata -lc -lrt
+--- 598,604 ----
+        ALLLIBS = ${LIBS} -lc -lrt
+      endif
+    else
+!     MAKE_SHARED = ${CXX} -D${PLATFORM} -shared  ${LDFLAGS}
+      PLATFORM_COMPILE_OPTIONS = -D${PLATFORM} -ptr ${XERCESCROOT}/.cxx_repository
+      ifeq (${TRANSCODER}, ICU)
+      ALLLIBS = ${LIBS} -L/usr/lib -L/usr/local/lib -L/usr/ccs/lib -licuuc -licudata -lc -lrt

@@ -1,0 +1,82 @@
+#
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
+#
+# Copyright 2012 Jyri J. Virkki. All rights reserved.
+#
+# THE BSD LICENSE
+#
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer. 
+# Redistributions in binary form must reproduce the above copyright notice, 
+# this list of conditions and the following disclaimer in the documentation 
+# and/or other materials provided with the distribution. 
+#
+# Neither the name of the  nor the names of its contributors may be
+# used to endorse or promote products derived from this software without 
+# specific prior written permission. 
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+# OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+
+
+BUILD_ROOT=../..
+include $(BUILD_ROOT)/make/base.mk
+
+SBCPROJ=$(SBC)/ldapsdk
+VERSION=6_0_5
+OBJDIR=$(SBCPROJ)/$(VERSION)/$(BASE_STRING)
+BASENAME=LDAPCSDK_$(VERSION)_RTM
+TARBALL=$(SBC_SRC)/$(BASENAME).tar.gz
+
+clean:
+	rm -rf $(SBC_WORK_DIR)/mozilla
+
+untar:
+	(cd $(SBC_WORK_DIR) && gtar -zxf $(TARBALL))
+
+build32: clean untar
+	( cd $(SBC_WORK_DIR)/mozilla/directory/c-sdk && \
+	./configure \
+		--with-nspr --with-nspr-inc=/usr/include/mps \
+		--with-nspr-lib=/usr/lib/mps \
+		--with-nss --with-nss-inc=/usr/include/mps \
+		--with-nss-lib=/usr/lib/mps \
+		--with-sasl && \
+	gmake )
+	SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		gmake -f Makefile.solaris install
+	
+build64: clean untar
+	( cd $(SBC_WORK_DIR)/mozilla/directory/c-sdk && \
+	./configure \
+		--with-nspr --with-nspr-inc=/usr/include/mps \
+		--with-nspr-lib=/usr/lib/mps/64 \
+		--with-nss --with-nss-inc=/usr/include/mps \
+		--with-nss-lib=/usr/lib/mps/64 \
+		--with-sasl \
+		--enable-64bit && \
+	gmake )
+	BUILD64=1 SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		gmake -f Makefile.solaris install
+
+install:
+	rm -rf $(OBJDIR)
+	mkdir -p $(OBJDIR)/lib
+	mkdir -p $(OBJDIR)/include
+	cp $(SBC_WORK_DIR)/mozilla/dist/public/ldap/* $(OBJDIR)/include/
+	chmod 644 $(OBJDIR)/include/*
+	cp $(SBC_WORK_DIR)/mozilla/dist/lib/* $(OBJDIR)/lib
+	rm -rf $(SBC_WORK_DIR)/mozilla

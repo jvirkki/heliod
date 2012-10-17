@@ -1,0 +1,45 @@
+
+Building the web server requires several dependencies in $SBC. You
+need to set this environment variable before running the build.
+
+The Makefile here will help you generate your own SBC tree. Suggested
+practice is to set SBC so it points to a shared filesystems (e.g. NFS)
+which is available to all your hosts but it can just as well be local
+if you prefer.
+
+The binaries will be installed in directories which identify the
+platform so the same SBC root can used for all platforms.
+
+The source tarballs for these components are not included here. You
+can download a separate tarball containing them from the project web
+site.
+
+Bugs:
+====
+This has only been tested on the few platforms I built on. May not
+work on other variants. If you try elsewhere, please send patches
+to the project mailing list.
+
+The build pretends to make OPT (optimized) and DBG (debug) bits but
+the scripts don't really observe these and build the same bits for both.
+Needs to be fixed.
+
+64bit builds are not complete.
+
+
+Steps:
+======
+1. Set environment variable SBC to point at the root of the
+destination. Binaries will be installed under $SBC
+
+2. Set environment variable SBC_SRC to point at the directory where
+the source tarballs live.
+
+3. Run the appropriate target for your platform from the Makefile.
+
+
+
+
+-------------------------------------------------------------------------------
+Why "SBC"? Originally within Netscape|iPlanet|Sun these components
+lived in /share/builds/components, commonly pronounced "SBC".

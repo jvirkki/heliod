@@ -1,0 +1,21 @@
+*** runConfigure.original	Tue Aug 16 16:48:26 2005
+--- runConfigure	Thu Feb 24 18:22:31 2011
+***************
+*** 387,394 ****
+      if test $platform; then
+          case $platform in
+             solaris)
+!               bitstobuildDefines=" $bitstobuildDefines -xarch=v9 "
+!               bitstobuildLink=" -xarch=v9 " ;;
+             aix)
+                bitstobuildDefines=" $bitstobuildDefines -q64 -qwarn64 " ;;
+             hp-11)
+--- 387,394 ----
+      if test $platform; then
+          case $platform in
+             solaris)
+!               bitstobuildDefines=" $bitstobuildDefines -m64 "
+!               bitstobuildLink=" -m64 " ;;
+             aix)
+                bitstobuildDefines=" $bitstobuildDefines -q64 -qwarn64 " ;;
+             hp-11)
