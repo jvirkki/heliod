@@ -31,9 +31,8 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-include ${BUILD_ROOT}/make/rules_COMMON.mk
 ifdef BUILD_JAVA
 include ${BUILD_ROOT}/make/rules_JAVA_JDK_1.$(JAVA_VERSION).mk
 else
-include ${BUILD_ROOT}/make/rules_${BASE_STRING}.mk
+include ${BASE_RULES_NAME}
 endif

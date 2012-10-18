@@ -33,6 +33,8 @@
 
 # Linux 2.1 AR and DLL targets
 
+include ${BUILD_ROOT}/make/rules_COMMON.mk
+
 #
 # AR[n]_TARGET, AR[n]_OBJS 
 #
