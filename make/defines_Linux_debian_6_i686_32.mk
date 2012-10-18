@@ -1,7 +1,7 @@
 #
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 #
-# Copyright 2008 Sun Microsystems, Inc. All rights reserved.
+# Copyright 2012 Jyri J. Virkki. All rights reserved.
 #
 # THE BSD LICENSE
 #
@@ -31,29 +31,12 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# Modified 2011 jyri@virkki.com
 
+include ${BUILD_ROOT}/make/defines_COMMON.mk
+include ${BUILD_ROOT}/make/defines_UNIX.mk
+include ${BUILD_ROOT}/make/defines_Linux.mk
+include ${BUILD_ROOT}/make/defines_Linux_debian.mk
+include ${BUILD_ROOT}/make/defines_WebServer.mk
 
-ifndef SBC
-$(error Build needs SBC envvar defined to find dependency libraries)
-endif
-
-NSPR_INC=-I/usr/include/nspr
-NSPR_LIBDIR=
-NSS_INC=-I/usr/include/nss
-NSS_LIBDIR=/usr/lib/nss
-LDAPSDK_INC=-I$(SBC)/ldapsdk/$(OBJDIR)/include
-LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(OBJDIR)/lib
-ZLIB_INC=
-ZLIB_LIBDIR=
-XERCESC_INC=
-XERCESC_LIBDIR=
-XALANC_INC=
-XALANC_LIBDIR=
-PCRE_INC=
-PCRE_LIBDIR=
-ICU_INC=
-ICU_LIBDIR=
-SASL_INC=
-SASL_LIBDIR=
-
+# Declare sbc components which need to be packaged for this platform:
+SBC_PUBLISH_LDAPSDK=1
