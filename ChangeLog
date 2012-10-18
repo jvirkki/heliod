@@ -1,13 +1,35 @@
+
+2012-10-17  Jyri J. Virkki  <jyri@virkki.com>
+
+        * version 0.2
+
+            No functionality changes.
+
+            Some refactoring of build rules and defines to remove some of
+            the platform ifdef complexity.
+
+            Included build scripts to help generate sbc tree, a pre-requisite
+            for anyone interested in building the code.  It should now be
+            reasonable (maybe not completely easy) for others to build this
+            (at least on Debian and Solaris 10).
+
+            Added Solaris 10 SPARC build.
+
+
 2011-03-08  Jyri J. Virkki  <jyri@virkki.com>
 
-	* version 0.1
+        * version 0.1
 
-	    Build can create a tarball
-	    Added rudimentary installation support for tarball-based install
-	    Built on Debian Linux and Solaris 10 x86 (32bit) only for now
-	    Removed Sun branding
+            Build can create a tarball.
+
+            Added rudimentary installation support for tarball-based install.
+
+            Built on Debian Linux and Solaris 10 x86 (32bit) only for now.
+
+            Removed Sun branding
+
 
 2011-02-22  Jyri J. Virkki  <jyri@virkki.com>
 
-	* Forked the code from
-	    ssh://anon@hg.opensolaris.org/hg/webstack/webserver
+        * Forked the code from
+            ssh://anon@hg.opensolaris.org/hg/webstack/webserver
