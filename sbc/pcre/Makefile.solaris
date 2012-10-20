@@ -49,11 +49,14 @@ untar:
 
 build32: clean untar
 	( cd $(SBC_WORK_DIR)/$(BASENAME) && \
-		./configure --prefix=$(OBJDIR) && \
-		gmake && gmake install)
+	      ./configure --prefix=$(OBJDIR) && \
+	      gmake && gmake install)
 	
 build64: clean untar
-	 @echo not done yet
+	 ( cd $(SBC_WORK_DIR)/$(BASENAME) && \
+	      CXXFLAGS=-m64 CFLAGS=-m64 LDFLAGS=-m64 \
+	      ./configure --prefix=$(OBJDIR) && \
+	      gmake && BUILD64=1 gmake install)
 
 install:
 	rm -rf $(OBJDIR)

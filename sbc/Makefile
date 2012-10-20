@@ -82,6 +82,14 @@ solaris:
 	(cd pcre && \
 		SBC_WORK_DIR=$(SBC_WORK_DIR) DEBUG=1 \
 		$(MAKE) -f Makefile.solaris build32)
+	(cd pcre && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		BUILD64=1 \
+		$(MAKE) -f Makefile.solaris build64)
+	(cd pcre && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		DEBUG=1 BUILD64=1 \
+		$(MAKE) -f Makefile.solaris build64)
 	(cd xerces-c && \
 		SBC_WORK_DIR=$(SBC_WORK_DIR) \
 		$(MAKE) -f Makefile.solaris build64)
