@@ -117,6 +117,12 @@ sub which_linux
         return ("debian", $VER);
     }
 
+    if (-f "/etc/redhat-release") {
+        $rhr = `cat /etc/redhat-release`; chomp $VER;
+	($name, $ver) = $rhr =~ /(\S*)\s*\S*\s*(\d*)/;
+        return ("redhat", $ver);
+    }
+
     return ("unknown", "unknown");
 }
 
