@@ -62,6 +62,28 @@ linux64:
 	mkdir -p $(SBC_WORK_DIR)
 	@echo not tested yet
 
+rh32:
+	mkdir -p $(SBC_WORK_DIR)
+	(cd ldapsdk && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		$(MAKE) -f Makefile.redhat build32)
+	(cd ldapsdk && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) DEBUG=1 \
+		$(MAKE) -f Makefile.redhat build32)
+	(cd xerces-c && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		$(MAKE) -f Makefile.redhat build32)
+	(cd xerces-c && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) DEBUG=1 \
+		$(MAKE) -f Makefile.redhat build32)
+	(cd xalan-c && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		$(MAKE) -f Makefile.redhat build32)
+	(cd xalan-c && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) DEBUG=1 \
+		$(MAKE) -f Makefile.redhat build32)
+
+
 solaris:
 	mkdir -p $(SBC_WORK_DIR)
 	(cd ldapsdk && \
