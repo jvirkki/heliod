@@ -81,12 +81,12 @@ FEAT_UPGRADE=1
 # PKCS 11 modules
 FEAT_PKCS_MODULES=1
 # PAM support
-ifeq ($(BUILD_OS),SOLARIS)
-#FEAT_PAM=1
-#SYSTEM_LIB+=$(PAM_LIBS)
+ifeq ($(BASE_OS),SunOS)
+FEAT_PAM=1
+SYSTEM_LIB+=$(PAM_LIBS)
 endif
 # GSSAPI authentication
-ifeq ($(BUILD_OS),SOLARIS)
+ifeq ($(BASE_OS),SunOS)
 FEAT_GSS=1
 SYSTEM_LIB+=$(GSS_LIBS)
 endif

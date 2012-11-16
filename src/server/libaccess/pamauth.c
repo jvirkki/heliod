@@ -44,8 +44,6 @@
 #include <libaccess/pamauth.h>
 #include <libaccess/aclerror.h>
 #include <base/util.h>
-#include <jni.h>
-#include "com_iplanet_ias_security_auth_realm_solaris_SolarisRealm.h"
 
 
 static int digits(int i);
@@ -291,105 +289,4 @@ static int digits(int i)
         ++digits;
 
     return (digits + 1);
-}
-
-
-/*-----------------------------------------------------------------------------
- * JNI calls pam_get_groups_for_user through here. Sets up Java array with
- * return data.
- *
- */
-static jobjectArray JNICALL java_GetGroups(JNIEnv *env, const char *user)
-{
-    char *groups;
-    char *s;
-    int i, ngroups, grouplen, groupnum;
-    jstring js;
-    jobjectArray jgroups;
-
-    if ((ngroups = pamauth_get_groups_for_user(user, &groups)) < 1) {
-        return (NULL);
-    }
-
-    if (!groups) {
-        return (NULL);
-    }
-    
-    jgroups = (*env)->NewObjectArray(env, ngroups,
-                                     (*env)->FindClass(env,"java/lang/String"),
-                                     (*env)->NewStringUTF(env, ""));
-    s = groups;
-    grouplen = strlen(groups);
-    groupnum = 0;
-    
-    for (i = 0; i < grouplen; i++) {
-        if (groups[i] == ',') {
-            groups[i] = 0;
-            js = (*env)->NewStringUTF(env, s);
-            (*env)->SetObjectArrayElement(env, jgroups, groupnum++, js);
-            s = groups + i + 1;
-        }
-    }
-    js = (*env)->NewStringUTF(env, s);
-    (*env)->SetObjectArrayElement(env, jgroups, groupnum++, js);
-    
-    FREE(groups);
-
-    return (jgroups);
-}
-
-
-/*-----------------------------------------------------------------------------
- * JNI entry points below.
- *
- */
-
-
-/*
- * Class:     Auth
- * Method:    nativeAuthenticate
- * Signature: (Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;
- */
-JNIEXPORT jobjectArray JNICALL
-Java_com_iplanet_ias_security_auth_realm_solaris_SolarisRealm_nativeAuthenticate(JNIEnv *env, jclass class, jstring juser, jstring jpassword)
-{
-    const char *user, *password;
-    jobjectArray jgroups;
-
-    user = (*env)->GetStringUTFChars(env, juser, NULL);
-    password = (*env)->GetStringUTFChars(env, jpassword, NULL);
-
-    jgroups = NULL;
-    /* Need to enforce that user name is not empty, or PAM will go
-       into a loop calling converse() until we run out of memory. */
-    if (user != NULL  && strlen(user) > 0) {
-        if (!pamauth_authenticate(user, password)) {
-            jgroups = java_GetGroups(env, user);
-        }
-    }
-
-    (*env)->ReleaseStringUTFChars(env, juser, user);
-    (*env)->ReleaseStringUTFChars(env, jpassword, password);
-
-    return (jgroups);
-}
-
-
-/*
- * Class:     Auth
- * Method:    nativeGetGroups
- * Signature: (Ljava/lang/String;)[Ljava/lang/String;
- */
-JNIEXPORT jobjectArray JNICALL
-Java_com_iplanet_ias_security_auth_realm_solaris_SolarisRealm_nativeGetGroups(JNIEnv *env, jclass class, jstring juser)
-{
-    const char *user;
-    jobjectArray jgroups;
-
-    user = (*env)->GetStringUTFChars(env, juser, NULL);
-    jgroups = java_GetGroups(env, user);
-
-    (*env)->ReleaseStringUTFChars(env, juser, user);
-
-    return (jgroups);
 }
