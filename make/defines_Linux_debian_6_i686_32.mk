@@ -32,11 +32,8 @@
 #
 
 
-include ${BUILD_ROOT}/make/defines_COMMON.mk
-include ${BUILD_ROOT}/make/defines_UNIX.mk
 include ${BUILD_ROOT}/make/defines_Linux.mk
 include ${BUILD_ROOT}/make/defines_Linux_debian.mk
-include ${BUILD_ROOT}/make/defines_WebServer.mk
 
 # Declare sbc components which need to be packaged for this platform:
 SBC_PUBLISH_LDAPSDK=1

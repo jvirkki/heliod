@@ -33,10 +33,6 @@
 
 # Modified 2011 jyri@virkki.com
 
-ifndef SBC
-$(error Build needs SBC envvar defined to find dependency libraries)
-endif
-
 LDAPSDK_VERSION=6_0_5
 
 NSPR_INC=-I/usr/include/nspr

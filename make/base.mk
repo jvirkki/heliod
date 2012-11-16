@@ -36,6 +36,9 @@
 # All it now does is include the base include file of the current platform.
 # That file is responsible for determining what the platform needs.
 
+ifndef SBC
+$(error Build needs SBC envvar defined to find dependency libraries)
+endif
 
 # First get the details of current platform
 

@@ -31,7 +31,6 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-include ${BUILD_ROOT}/make/defines_SunOS.mk
 
 # Declare sbc components which need to be packaged for this platform:
 SBC_PUBLISH_LDAPSDK=1

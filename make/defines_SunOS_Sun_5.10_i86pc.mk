@@ -33,6 +33,7 @@
 
 
 include ${BUILD_ROOT}/make/defines_SunOS_Sun_5.10.mk
+include ${BUILD_ROOT}/make/defines_SunOS.mk
 
 JNI_MD_SYSNAME  = i386
 JNI_MD_SYSNAME64  = amd64
