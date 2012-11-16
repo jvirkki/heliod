@@ -84,7 +84,6 @@ TR              =$(TOOL_ROOT)/bin/tr
 TAR		=$(TOOL_ROOT)/bin/tar
 STRIP		=strip
 RCP		=$(TOOL_ROOT)/bin/rcp
-RCP_CMD		=$(RCP) -r $(RCPUSER)@$(RCPSERVER)
 
 G++		=$(NSTOOL_ROOT)/bin/g++
 GCC		=$(NSTOOL_ROOT)/bin/gcc

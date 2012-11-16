@@ -52,7 +52,6 @@ DAEMON_DLL_VER=40
 #######################################
 # Product name and feature definition #
 #######################################
-ifeq ($(PROJECT),WebServer) # this should be the ONLY use of $(PROJECT)
 
 # HTTP Server: header prefix (must not contain spaces)
 PRODUCT_HEADER_ID = "Web-Server"
@@ -106,21 +105,8 @@ ifndef NO_L10N
 FEAT_L10N=1
 endif
 
-else				# if PROJECT ne Enterprise
-
-# placeholder for new products
-PRODUCT_FULL_NAME = "Web Server, Undefined Edition"
-PRODUCT_NAME = "Web Server"
-PRODUCT_SHORT_NAME = WebServer
-PRODUCT_SUB_NAME = Undefined
-PRODUCT_ABBREVIATION = WS
-NS_PRODUCT = NS_UNDEFINED
-
-endif
-
 PRODUCT_ID = ""$(BRAND_NAME)" "$(PRODUCT_NAME)""
 
-# see also ns/netsite/include/version.h
 PRODUCT_VERSION = $(VER_MAJOR).$(VER_MINOR)
 PRODUCT_FULL_VERSION := $(PRODUCT_VERSION)
 
@@ -212,4 +198,3 @@ SAMPLES_SUBDIR=samples
 JDK_SUBDIR=jdk
 PERL_SUBDIR=lib/perl
 SNMP_SUBDIR=lib/snmp
-LICENSE_SUBDIR=Legal

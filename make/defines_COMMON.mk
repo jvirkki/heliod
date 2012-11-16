@@ -31,7 +31,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# Modified 2011 jyri@virkki.com
+# Modified 2011-2012 jyri@virkki.com
 
 
 #! gmake
@@ -39,8 +39,6 @@
 # This file contains the main defines.  They can be overridden by platform 
 # defines
 
-RCPSERVER=iws-files
-RCPUSER=ftpman
 
 ###############
 #### TOOLS ####
@@ -53,15 +51,6 @@ EXTERNAL_BASE	=$(BUILD_ROOT)/external
 WORK_ROOT	=$(WORK_BASE)/$(SHIPDIR)
 INTERNAL_ROOT	=$(INTERNAL_BASE)/$(SHIPDIR)
 
-# package directories
-PACKAGE_ROOT	=$(BUILD_ROOT)/package
-ZIPINSTALL_DIR	=$(PACKAGE_ROOT)/zipinstall/$(SHIPDIR)
-NATIVEPKG_DIR	=$(PACKAGE_ROOT)/nativepkg/$(SHIPDIR)
-
-# patch package directories
-PATCHPKG_DIR	=$(PACKAGE_ROOT)/patches/$(SHIPDIR)
-
-PRSTRMS_LIB= prstrms4
 ARES_LIB   = ares3
 
 ifdef DEBUG_BUILD
