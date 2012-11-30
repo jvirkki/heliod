@@ -45,7 +45,7 @@ all::
 DLL_OBJS=xpatomic \
          xpunit
 
-ifeq ($(UNAME_OS_RELEASE),5.11)
+ifeq ($(BASE_OSVERSION),5.11)
 LOCAL_DEF+= -DNO_INC_ATOMIC_ASM_WEAK
 endif
 
