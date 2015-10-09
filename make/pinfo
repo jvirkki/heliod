@@ -3,7 +3,7 @@
 #
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 #
-# Copyright 2012 Jyri J. Virkki. All rights reserved.
+# Copyright 2012-2015 Jyri J. Virkki. All rights reserved.
 #
 # THE BSD LICENSE
 #
@@ -33,6 +33,13 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+
+# If set, show all the paths it didn't find. Must not be set when building,
+# only useful for manual diagnostics to see what file is loaded.
+
+if ($ENV{'PINFO_SHOW_PATH'}) {
+    $VERBOSE = 1;
+}
 
 if ($ARGV[0] eq "-o") { &show_os(); }
 elsif ($ARGV[0] eq "-v") { &show_os_variant(); }
@@ -142,25 +149,31 @@ sub get_base_include
         $base_osversion . "_" . $base_platform . "_" . $base_bits .
         "_" . $base_type . ".mk";
     if (-f $m) { return $m; }
+    print "No $m\n" if $VERBOSE;
 
     $f = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
         $base_osversion . "_" . $base_platform . "_" . $base_bits . ".mk";
     if (-e $f) { return $f; }
+    print "No $f\n" if $VERBOSE;
 
     $f = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
         $base_osversion . "_" . $base_platform . ".mk";
     if (-e $f) { return $f; }
+    print "No $f\n" if $VERBOSE;
 
     $f = "$makedir/make/$prefix" . "_" . $base_os . "_" . $base_variant . "_" .
         $base_osversion . ".mk";
     if (-e $f) { return $f; }
+    print "No $f\n" if $VERBOSE;
 
     $f = "$makedir/make/$prefix" . "_" . $base_os . "_" .
         $base_variant . ".mk";
     if (-e $f) { return $f; }
+    print "No $f\n" if $VERBOSE;
 
     $f = "$makedir/make/$prefix" . "_" . $base_os . ".mk";
     if (-e $f) { return $f; }
+    print "No $f\n" if $VERBOSE;
 
     return "define_MISSING_$m";
 }

@@ -1,7 +1,7 @@
 #
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 #
-# Copyright 2012 Jyri J. Virkki. All rights reserved.
+# Copyright 2012-2015 Jyri J. Virkki. All rights reserved.
 #
 # THE BSD LICENSE
 #
@@ -37,7 +37,20 @@ BUILD_ROOT=..
 
 include base.mk
 
+ifdef BUILD64
+BASE_BITS=64
+else
+BASE_BITS=32
+endif
+
+ifdef DEBUG
+BASE_TYPE:=DBG
+else
+BASE_TYPE:=OPT
+endif
+
 all:
+	@PINFO_SHOW_PATH=1 ./pinfo -bd $(BASE_BITS) $(BASE_TYPE) $(BUILD_ROOT)
 	@echo BASE_STRING $(BASE_STRING)
 	@echo BASE_DEFINES_NAME $(BASE_DEFINES_NAME)
 	@echo BASE_RULES_NAME $(BASE_RULES_NAME)
