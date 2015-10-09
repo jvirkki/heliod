@@ -60,7 +60,12 @@ linux32:
 
 linux64:
 	mkdir -p $(SBC_WORK_DIR)
-	@echo not tested yet
+	(cd ldapsdk && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) \
+		$(MAKE) -f Makefile.linux build64)
+	(cd ldapsdk && \
+		SBC_WORK_DIR=$(SBC_WORK_DIR) DEBUG=1 \
+		$(MAKE) -f Makefile.linux build64)
 
 rh32:
 	mkdir -p $(SBC_WORK_DIR)

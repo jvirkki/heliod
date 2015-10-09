@@ -62,10 +62,10 @@ build32: clean untar
 build64: clean untar
 	( cd $(SBC_WORK_DIR)/mozilla/directory/c-sdk && \
 	./configure \
-		--with-nspr --with-nspr-inc=/usr/include/mps \
-		--with-nspr-lib=/usr/lib/mps/64 \
-		--with-nss --with-nss-inc=/usr/include/mps \
-		--with-nss-lib=/usr/lib/mps/64 \
+		--with-nspr --with-nspr-inc=/usr/include/nspr \
+		--with-nspr-lib=/usr/lib/x86_64-linux-gnu/nss \
+		--with-nss --with-nss-inc=/usr/include/nss \
+		--with-nss-lib=/usr/lib/x86_64-linux-gnu/nss \
 		--with-sasl \
 		--enable-64bit && \
 	make )
