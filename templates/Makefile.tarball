@@ -27,7 +27,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# Copyright 2011 jyri@virkki.com
+# Copyright 2011-2015 jyri@virkki.com
 
 BUILD_ROOT=..
 
@@ -67,6 +67,7 @@ tree:
 	$(CP) $(BUILD_ROOT)/templates/post-install $(WORK_ROOT)/bin/
 	$(CHMOD) +x $(WORK_ROOT)/bin/post-install
 	./replace_vars.pl WS_EXTRA_LIBPATH=$(RUNTIME_LIBDIR) \
+			  WS_SERVER_BITS=$(BASE_BITS) \
 			  INPUT_DIR=. OUTPUT_DIR=$(WORK_ROOT)/bin
 	$(CHMOD) +x $(WORK_ROOT)/bin/create-instance
 	$(CP) $(BUILD_ROOT)/templates/README $(WORK_ROOT)

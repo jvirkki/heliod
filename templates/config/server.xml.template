@@ -42,6 +42,7 @@
   </log>
   <temp-path>%%%WS_SERVER_TEMPDIR%%%</temp-path>
   <user>%%%WS_SERVER_USER%%%</user>
+  <platform>%%%WS_SERVER_BITS%%%</platform>
 
   <default-auth-db-name>keyfile</default-auth-db-name>
 
