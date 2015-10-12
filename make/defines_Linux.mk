@@ -101,6 +101,12 @@ PLATFORM_LD_OPTS =
 LD_DYNAMIC	= $(PLATFORM_LD_OPTS) -shared
 LD_SYMBOLIC	= -Wl,-Bsymbolic
 
+ifdef BUILD64
+PLATFORM_CC_OPTS+=-m64
+else
+PLATFORM_CC_OPTS+=-m32
+endif
+
 # These libraries are platform-specific, not system-specific
 # WARNING Don't use the -thread option, use -pthread option
 PLATFORM_LIB	 += $(PRE_PLATFORM_LIB) pthread dl crypt resolv
