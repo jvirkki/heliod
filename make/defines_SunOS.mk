@@ -92,11 +92,23 @@ PLATFORM_LD_OPTS = -mt -norunpath
 RPATH_PREFIX = -R 
 RPATH_ORIGIN = \$$ORIGIN
 ifndef NO_KPIC
-PLATFORM_CC_OPTS += -KPIC
-PLATFORM_C_OPTS  += -Kpic
-PLATFORM_AS_OPTS += -KPIC
+PLATFORM_CC_OPTS += -xcode=pic32
+PLATFORM_C_OPTS  += -xcode=pic32
+PLATFORM_AS_OPTS += -xcode=pic32
 endif
 SYSTEM_LIBDIRS += $(SUNWSPRO_DIR)/lib
+
+ifdef BUILD64
+PLATFORM_CC_OPTS += -m64
+PLATFORM_C_OPTS  += -m64
+PLATFORM_AS_OPTS += -m64
+PLATFORM_LD_OPTS += -m64
+else
+PLATFORM_CC_OPTS += -m32
+PLATFORM_C_OPTS  += -m32
+PLATFORM_AS_OPTS +=- m32
+PLATFORM_LD_OPTS += -m32
+endif
 
 # Mapfile generation.  Set USE_MAPFILE=1 to require a mapfile for each so.
 #USE_MAPFILE=1
@@ -143,9 +155,16 @@ XALAN_VERSION=1_10_0
 PCRE_VERSION=8.02
 
 NSPR_INC=-I/usr/include/mps
-NSPR_LIBDIR=/usr/lib/mps
 NSS_INC=-I/usr/include/mps
+
+ifdef BUILD64
+NSPR_LIBDIR=/usr/lib/mps/64
+NSS_LIBDIR=/usr/lib/mps/64
+else
+NSPR_LIBDIR=/usr/lib/mps
 NSS_LIBDIR=/usr/lib/mps
+endif
+
 LDAPSDK_INC=-I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
 LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/lib
 ZLIB_INC=
