@@ -67,7 +67,13 @@ $line = <stdin>;
 chomp $line;
 if ($line ne "") { $WS_HTTP_PORT = $line; }
 
-$WS_SERVER_USER=`whoami`; chomp $WS_SERVER_USER;
+$WS_SERVER_USER="";
+if (-e '/usr/bin/whoami') {
+    $WS_SERVER_USER=`/usr/bin/whoami`; chomp $WS_SERVER_USER;
+} elsif (-e '/usr/ucb/whoami') {
+    $WS_SERVER_USER=`/usr/ucb/whoami`; chomp $WS_SERVER_USER;
+}
+
 print "Enter runtime user (default = $WS_SERVER_USER): ";
 $line = <stdin>;
 chomp $line;
