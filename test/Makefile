@@ -1,7 +1,7 @@
 #
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 #
-# Copyright 2008 Sun Microsystems, Inc. All rights reserved.
+# Copyright 2015 Jyri J. Virkki
 #
 # THE BSD LICENSE
 #
@@ -31,45 +31,29 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-# Modified 2011 jyri@virkki.com
+BUILD_ROOT=..
 
-BUILD_VARIANT = DEBUG
-SECURITY_POLICY = DOMESTIC
-#BUILD_VARIANT = OPTIMIZED
-#SECURITY_POLICY = EXPORT
+include $(BUILD_ROOT)/make/base.mk
 
-ifndef PROJECT
-export PROJECT=WebServer
-endif
+# Unfortunately the extensive test suites present in the commercial
+# product were not open sourced by Sun as part of the Open Web Server
+# sources, so these have been lost to the mists of time.
+#
+# Adding a bare minimum single test here which tries to start the server
+# using the default config and see if it can serve the default index page.
+#
+# Note that if this fails, it'll leave behind the https-localhost directory
+# and possibly the running server. Clean up manually.
 
-STDOPTS=BUILD_VARIANT=$(BUILD_VARIANT) SECURITY_POLICY=$(SECURITY_POLICY)
+tests:
+	@echo "----- Running tests -----"
+	cd $(WORK_ROOT) && \
+	./bin/post-install && \
+	./bin/create-instance -hostname localhost -user $(USER) -port 8188 && \
+	./https-localhost/bin/startserv && \
+	curl -s http://localhost:8188 | grep Welcome && \
+	./https-localhost/bin/stopserv && \
+	rm -rf ./https-localhost/
+	@echo "----- tests completed -----"
 
-all: buildinfo server
 
-buildinfo:
-	@echo "###############################################################"
-	@echo "Building $(PROJECT)"
-	@echo "Build type: $(BUILD_VARIANT)"
-	@echo "Security: $(SECURITY_POLICY)"
-	@echo "###############################################################"
-
-server:
-	cd src && $(MAKE) $(STDOPTS) all
-
-tarball:
-	cd src && $(MAKE) $(STDOPTS) all publish
-	cd src/server/public && $(MAKE) $(STDOPTS) all publish
-	cd templates && $(MAKE) -f Makefile.tarball tarball
-
-install:
-	cd templates;$(MAKE) $(STDOPTS) install
-
-tests: tarball
-	cd test && $(MAKE)
-
-clobber:
-	cd src; $(MAKE) $(STDOPTS) clobber
-	cd src/server/public && $(MAKE) $(STDOPTS) clobber
-	rm -rf work internal
-
-clean: clobber
