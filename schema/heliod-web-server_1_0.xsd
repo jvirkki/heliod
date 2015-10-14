@@ -845,7 +845,7 @@
     <xs:element name="server-header" type="xs:string" minOccurs="0">
       <xs:annotation>
         <xs:appinfo>
-          <appinfo:implicit>heliod-web-server/0.3</appinfo:implicit>
+          <appinfo:implicit>heliod-web-server/0.4</appinfo:implicit>
         </xs:appinfo>
       </xs:annotation>
     </xs:element>
