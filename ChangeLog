@@ -1,4 +1,15 @@
 
+2015-10-14  Jyri J. Virkki  <jyri@virkki.com>
+
+	* version 0.3
+
+	    Build support for debian6(64bit) and sun4v.
+
+	    Minimal test.
+
+            Enable PAM and GSSAPI (Kerberos) authentication libraries on Solaris.
+
+
 2012-10-17  Jyri J. Virkki  <jyri@virkki.com>
 
         * version 0.2
