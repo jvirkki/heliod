@@ -53,31 +53,33 @@ $WS_INSTALL_ROOT=`pwd`; chomp $WS_INSTALL_ROOT;
 $WS_INSTANCE_ROOT=$WS_INSTALL_ROOT;
 $INT_ENV_PATH="$WS_INSTALL_ROOT/lib";
 
+&process_args();
+
 print "\nThis script will create a new server instance...\n";
 
-$WS_SERVER_NAME=`hostname`; chomp $WS_SERVER_NAME;
-print "Enter server name (default = $WS_SERVER_NAME): ";
-$line = <stdin>;
-chomp $line;
-if ($line ne "") { $WS_SERVER_NAME = $line; }
-
-$WS_HTTP_PORT=8080;
-print "Enter HTTP port number (default = $WS_HTTP_PORT): ";
-$line = <stdin>;
-chomp $line;
-if ($line ne "") { $WS_HTTP_PORT = $line; }
-
-$WS_SERVER_USER="";
-if (-e '/usr/bin/whoami') {
-    $WS_SERVER_USER=`/usr/bin/whoami`; chomp $WS_SERVER_USER;
-} elsif (-e '/usr/ucb/whoami') {
-    $WS_SERVER_USER=`/usr/ucb/whoami`; chomp $WS_SERVER_USER;
+if (!$WS_SERVER_NAME) {
+    $WS_SERVER_NAME=`hostname`; chomp $WS_SERVER_NAME;
+    print "Enter server name (default = $WS_SERVER_NAME): ";
+    $WS_SERVER_NAME = read_or_default($WS_SERVER_NAME);
 }
 
-print "Enter runtime user (default = $WS_SERVER_USER): ";
-$line = <stdin>;
-chomp $line;
-if ($line ne "") { $WS_SERVER_USER = $line; }
+if (!$WS_HTTP_PORT) {
+    $WS_HTTP_PORT=8080;
+    print "Enter HTTP port number (default = $WS_HTTP_PORT): ";
+    $WS_HTTP_PORT = read_or_default($WS_HTTP_PORT);
+}
+
+if (!$WS_SERVER_USER) {
+    $WS_SERVER_USER="";
+    if (-e '/usr/bin/whoami') {
+	$WS_SERVER_USER=`/usr/bin/whoami`; chomp $WS_SERVER_USER;
+    } elsif (-e '/usr/ucb/whoami') { # Solaris
+	$WS_SERVER_USER=`/usr/ucb/whoami`; chomp $WS_SERVER_USER;
+    }
+
+    print "Enter runtime user (default = $WS_SERVER_USER): ";
+    $WS_SERVER_USER = read_or_default($WS_SERVER_USER);
+}
 
 $WS_CONFIG_NAME="https-$WS_SERVER_NAME";
 $WS_INSTANCE_NAME=$WS_CONFIG_NAME;
@@ -97,6 +99,11 @@ $vars = "WS_INSTALL_ROOT=$WS_INSTALL_ROOT   INT_ENV_PATH=$INT_ENV_PATH WS_INSTAN
 mkdir $WS_CONFIG_NAME;
 
 cmd("cd $WS_CONFIG_NAME && /bin/cp -r ../lib/installer/https-template/* .");
+
+if ($CONFIG_DIR_SRC) {
+    print "Also copying config dir templates from $CONFIG_DIR_SRC\n";
+    cmd("cp $CONFIG_DIR_SRC/* ./$WS_CONFIG_NAME/config/");
+}
 
 cmd("$RPV $vars INPUT_DIR=./$WS_CONFIG_NAME/config OUTPUT_DIR=./$WS_CONFIG_NAME/config");
 
@@ -121,4 +128,34 @@ sub cmd
     my ($cmd) = @_;
     print "$cmd\n";
     system($cmd);
+}
+
+sub process_args
+{
+    while (@ARGV) {
+
+	$arg = shift(@ARGV);
+
+	if ($arg eq "-hostname") {
+	    $WS_SERVER_NAME = shift(@ARGV);
+	} elsif ($arg eq "-port") {
+	    $WS_HTTP_PORT = shift(@ARGV);
+	} elsif ($arg eq "-user") {
+	    $WS_SERVER_USER = shift(@ARGV);
+	} elsif ($arg eq "-config-dir-src") {
+	    $CONFIG_DIR_SRC = shift(@ARGV);
+	} else {
+	    die "Unknown argument [$arg]\n";
+	}
+    }
+}
+
+sub read_or_default
+{
+    my ($default_value) = @_;
+
+    $line = <stdin>;
+    chomp $line;
+    return $line if ($line ne "");
+    return $default_value;
 }
