@@ -67,7 +67,7 @@ public:
                     const XMLCh *const localname,
                     const XMLCh *const qname);
     void characters(const XMLCh *const s,
-                    const unsigned len);
+                    const XMLSize_t len);
     void warning(const SAXParseException& e) { }
     void error(const SAXParseException& e) { }
     void fatalError(const SAXParseException& e) { }
@@ -142,7 +142,7 @@ void ServerXMLSummarySAXHandler::endElement(const XMLCh *const uri,
 //-----------------------------------------------------------------------------
 
 void ServerXMLSummarySAXHandler::characters(const XMLCh *const s,
-                                            const unsigned len)
+                                            const XMLSize_t len)
 {
     if (content != NULL)
         content->append(CString(s, len));
@@ -214,7 +214,7 @@ ServerXMLSummary *ServerXMLSummary::parse(const char *filename)
     SAX2XMLReader *parser = XMLReaderFactory::createXMLReader();
     parser->setExitOnFirstFatalError(false);
     parser->setFeature(XMLUni::fgXercesSchema, false);
-    parser->setFeature(XMLUni::fgSAX2CoreNameSpaces, false);
+    parser->setFeature(XMLUni::fgSAX2CoreNameSpaces, true);
     parser->setFeature(XMLUni::fgSAX2CoreValidation, false);
 
     ServerXMLSummarySAXHandler handler;

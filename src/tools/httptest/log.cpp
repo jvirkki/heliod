@@ -61,7 +61,7 @@ void Logger::setThreadName(char *name)
     PR_SetThreadPrivate(_threadNameKey, name);
 };
 
-void Logger::logError(LogLevel level, char *fmt, ...)
+void Logger::logError(LogLevel level, const char* fmt, ...)
 {
     if (level == LOGPASS)
         _pass++;

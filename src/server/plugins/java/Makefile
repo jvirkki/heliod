@@ -87,4 +87,11 @@ SHIP_PRIVATE_DYNAMIC_LIBRARIES=$(DLL_TARGET)
 
 SHIP_ICU_RESOURCES=$(J2EE_PROPERTIES_FILE)_root
 
+# Linux: no mapfile support; force -fPIC for shared lib objects
+ifeq ($(OS_ARCH),Linux)
+USE_MAPFILE=
+LOCAL_CC_OPTS += -fPIC
+LOCAL_C_OPTS += -fPIC
+endif
+
 include $(BUILD_ROOT)/make/rules.mk

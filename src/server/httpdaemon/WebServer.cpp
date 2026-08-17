@@ -91,6 +91,7 @@
 #include "httpdaemon/httprequest.h"
 #include "httpdaemon/httpheader.h"
 #include "httpdaemon/configuration.h"           // Configuration class
+#include "httpdaemon/reverseproxyconfig.h"      // ReverseProxyConfig
 #include "httpdaemon/configurationmanager.h"    // Configurationmanager class
 #include "httpdaemon/vsmanager.h"               // VSManager class
 #include "httpdaemon/statsmanager.h"            // StatsManager class
@@ -696,7 +697,23 @@ WebServer::ConfigureFileDescriptorLimits(const Configuration *configuration)
         nThreadPoolQueueSize = 16384;
 #else
     // Figure out how many file descriptors are available to us
-    int nMaxDescriptors = maxfd_get();
+    int nOSMaxDescriptors = maxfd_get();
+
+    // Avoid pathological over-allocation of connection-queue, keep-alive,
+    // and file-cache tables in proportion to extremely high configured fd
+    // limits (e.g. modern systemd/PAM defaults of several hundred thousand,
+    // vs. the modest limits assumed when this auto-tuning was designed),
+    // which can exceed available RAM on modestly-sized hosts and get the
+    // process OOM-killed at startup. Cap the limit used for this specific
+    // sizing calculation (nMaxDescriptors); administrators needing to serve
+    // more concurrent connections than this can explicitly configure the
+    // relevant <file-cache>/<keep-alive>/<thread-pool> settings rather than
+    // relying on this auto-tuning to scale indefinitely with ulimit -n.
+    const int kMaxDescriptorsForAutoSizing = 65536;
+    int nMaxDescriptors = nOSMaxDescriptors;
+    if (nMaxDescriptors > kMaxDescriptorsForAutoSizing)
+        nMaxDescriptors = kMaxDescriptorsForAutoSizing;
+
     int nAvailableDescriptors = nMaxDescriptors - maxfd_getopen();
 
     // Because administrators may increase the operating system file descriptor
@@ -798,7 +815,7 @@ WebServer::ConfigureFileDescriptorLimits(const Configuration *configuration)
             return PR_FAILURE;
     }
 
-    ereport(LOG_VERBOSE, "operating system file descriptor limit is %d", nMaxDescriptors);
+    ereport(LOG_VERBOSE, "operating system file descriptor limit is %d", nOSMaxDescriptors);
     ereport(LOG_VERBOSE, "allocating %d file descriptors to the connection queue, %d file descriptors to keep-alive connections, and %d file descriptors to the file cache", nThreadPoolQueueSize, nKeepAliveMaxConnections, nFileCacheMaxOpenFiles);
 #endif
 
@@ -1054,6 +1071,12 @@ WebServer::Init(int argc, char *argv[])
     // Parse magnus.conf
     if (conf_parse(PRODUCT_MAGNUS_CONF, jvm_enabled) != PR_SUCCESS)
         return PR_FAILURE;
+
+    // Load the ReverseProxy* directives (ReverseProxyIPHeader,
+    // ReverseProxyTrustedIPs, ReverseProxyLogAttribution) that control
+    // whether perfdump/errors log show the actual or proxy-forwarded
+    // client IP. Must happen after conf_parse() above.
+    ReverseProxyConfig_GetGlobalForInit().initFromMagnusConf();
 
 #ifdef XP_UNIX
     // Clear LD_PRELOAD to avoid problems exec()'ing a setuid Cgistub

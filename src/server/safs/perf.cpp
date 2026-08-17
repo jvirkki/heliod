@@ -195,6 +195,7 @@ static char dtd[] =
 "          connection-queue IDREF #REQUIRED\n"
 "          virtual-server IDREF #IMPLIED\n"
 "          addressClient CDATA #IMPLIED\n"
+"          addressClientReported CDATA #IMPLIED\n"
 "          timeRequestStarted CDATA #IMPLIED\n"
 ">\n"
 "\n"
@@ -803,6 +804,15 @@ static void outputThreads(XMLOutput &xml, PList_t qlist, const Configuration *co
     if (!isEnabled(qlist, "thread"))
         return;
 
+    // Which of addressClient/addressClientReported to show is controlled by
+    // the *global* ReverseProxyLogAttribution -- this is a process-wide dump
+    // spanning all virtual servers, so per-VS <log-attribution> overrides
+    // (which only affect that VS's errors log messages) aren't consulted
+    // here. "actual" shows only the real TCP peer; "proxied-ip" shows only the
+    // resolved/reported IP (falling back to the real peer for any thread
+    // where a reported IP wasn't resolved); "both" always shows both.
+    ReverseProxyLogAttribution attribution = ReverseProxyConfig_GetGlobal().getLogAttribution();
+
     StatsThreadNode *threadNode;
     threadNode = process->thread;
     while (threadNode) {
@@ -820,8 +830,18 @@ static void outputThreads(XMLOutput &xml, PList_t qlist, const Configuration *co
                 xml.attribute("connection-queue", thread->connQueueId);
             if (thread->vsId[0])
                 xml.attribute("virtual-server", thread->vsId);
-            if (thread->addressClient.raw.family != 0)
+
+            PRBool haveReported = (thread->addressClientReported.raw.family != 0);
+            PRBool showReported = haveReported &&
+                (attribution == REVERSE_PROXY_LOG_ATTRIBUTION_PROXIED_IP ||
+                 attribution == REVERSE_PROXY_LOG_ATTRIBUTION_BOTH);
+            PRBool showActual = !showReported ||
+                (attribution == REVERSE_PROXY_LOG_ATTRIBUTION_BOTH);
+
+            if (showActual && thread->addressClient.raw.family != 0)
                 xml.attribute("addressClient", thread->addressClient);
+            if (showReported)
+                xml.attribute("addressClientReported", thread->addressClientReported);
             if (thread->timeRequestStarted != 0)
                 xml.attribute("timeRequestStarted", thread->timeRequestStarted);
 

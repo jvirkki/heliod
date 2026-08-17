@@ -167,7 +167,7 @@ endif
 ES_RPATH=$(RPATH_ORIGIN):$(RPATH_ORIGIN_SLASH)../lib$(PLATFORM_SUBDIR_SUFFIX):$(RPATH_ORIGIN_SLASH)../../lib$(PLATFORM_SUBDIR_SUFFIX):$(JES_RPATH)
 
 ifndef LD_RPATH
-LD_RPATH=$(ES_RPATH)
+LD_RPATH=
 endif
 
 # File name and file layout related defines

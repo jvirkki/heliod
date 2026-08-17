@@ -326,7 +326,9 @@ NSAPI_PUBLIC int system_nocoredumps(void)
     signal(SIGTRAP, exit);
     signal(SIGABRT, exit);
     signal(SIGIOT, exit);
+#ifdef SIGEMT
     signal(SIGEMT, exit);
+#endif
     signal(SIGFPE, exit);
     signal(SIGBUS, exit);
     signal(SIGSEGV, exit);
@@ -758,7 +760,7 @@ NSAPI_PUBLIC int system_errmsg_fn(char **buff, size_t maxlen)
 
     /* Restore the NSPR error state */
     PR_SetError(nscp_error, sys_error);
-    if (lmsg > 0)
+    if (lmsg != NULL)
         PR_SetErrorText(msglen, lmsg);
 
 #ifdef XP_WIN32

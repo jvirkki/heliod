@@ -98,7 +98,6 @@ public:
 
 ServerXMLParser::ServerXMLParser()
 {
-    setDoValidation(true);
     setValidationScheme(XercesDOMParser::Val_Always);
     setDoNamespaces(true);
     setDoSchema(true);

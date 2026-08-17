@@ -42,6 +42,8 @@
 #include "frame/conf_api.h"
 #include "support/stringvalue.h"
 
+const char *util_host_port_suffix(const char *h);
+
 #ifdef XP_WIN32
 static PRBool _getfullpathname = -1;
 #endif /* XP_WIN32 */
@@ -517,7 +519,7 @@ NSAPI_PUBLIC char *util_host_port_suffix(char *h)
     return (char *)util_host_port_suffix((const char *)h);
 }
 
-const char *util_host_port_suffix(const char *h)
+NSAPI_PUBLIC const char *util_host_port_suffix(const char *h)
 {
     /* Return a pointer to the colon preceding the port number in a hostname.
      *

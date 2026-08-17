@@ -44,7 +44,6 @@
 #include <stdlib.h>
 
 #if !defined (XP_WIN32)
-#include <crypt.h>
 #include <unistd.h>
 #else
 #include <conio.h>

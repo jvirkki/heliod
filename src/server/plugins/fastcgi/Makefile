@@ -40,6 +40,10 @@ MODULE=fastcgi
 
 include $(BUILD_ROOT)/make/base.mk
 
+CC_FLAGS += -fPIC
+CFLAGS += -fPIC
+CXXFLAGS += -fPIC
+
 all::
 
 LOCAL_DEF+=-DBUILD_DLL
@@ -54,6 +58,7 @@ LOCAL_LIBDIRS+=../../../support/support/$(OBJDIR)
 DLL_TARGET=fastcgi
 DLL_OBJS=errortypes util fastcgii18n serverconfig fcgirequest fcgiparser serverchannel 
 DLL_OBJS+=server servermanager stubexec baserole fcgirole nsapifastcgi
+util.cpp_CC_FLAGS += -fPIC
 DLL_LIBS=$(DAEMON_DLL) serverxml support libsi18n $(CLIENTLIBS)
 
 ifeq ($(OS_ARCH),WINNT)
@@ -73,5 +78,12 @@ link::
 
 publish_copy::
 	$(MAKE_FCGISTUB)
+
+# Linux: no mapfile support; force -fPIC for shared lib objects
+ifeq ($(OS_ARCH),Linux)
+USE_MAPFILE=
+LOCAL_CC_OPTS += -fPIC
+LOCAL_C_OPTS += -fPIC
+endif
 
 include $(BUILD_ROOT)/make/rules.mk

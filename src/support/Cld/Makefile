@@ -32,8 +32,7 @@
 #
 
 BUILD_ROOT=../../..
-USE_MAPFILE=1
-
+USE_MAPFILE=
 include ${BUILD_ROOT}/make/base.mk
 
 MODULE=libCld

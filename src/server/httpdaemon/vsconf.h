@@ -46,6 +46,7 @@
 #include "httpdaemon/AuthDb.h"
 #include "base/sslconf.h"
 #include "httpdaemon/throttling.h"
+#include "httpdaemon/reverseproxyconfig.h"
 #include "libaccess/acl.h"              // basic ACL data structures
 #ifdef FEAT_SECRULE
 #include "libsecrule/SecRec.h"      
@@ -98,6 +99,14 @@ class VirtualServer : public ServerXMLSchema::VirtualServerWrapper, public Confi
         inline VSTrafficStats& getTrafficStats() const;
         const ServerName *getNormalizedCanonicalServerName() const;
 
+        /**
+         * Return this virtual server's effective ReverseProxyConfig, i.e.
+         * the global (magnus.conf-derived) ReverseProxyConfig with this
+         * virtual server's <reverse-proxy> element's overrides, if any,
+         * applied on top.
+         */
+        const ReverseProxyConfig& getReverseProxyConfig() const { return reverseProxyConfig; }
+
         PRBool isUnbound() const;
         void bind();
 
@@ -117,6 +126,7 @@ class VirtualServer : public ServerXMLSchema::VirtualServerWrapper, public Confi
         Mime mime;
         VSTrafficStats stats;
         ServerName *canonicalServerName;
+        ReverseProxyConfig reverseProxyConfig;
 #ifdef FEAT_SECRULE
         SecRec *secRec;
 #endif

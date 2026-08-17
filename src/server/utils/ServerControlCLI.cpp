@@ -33,8 +33,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef LINUX
+#if defined(XP_UNIX) || !defined(XP_WIN32)
 #include <getopt.h>
+#include <unistd.h>
 #elif XP_WIN32
 #include "wingetopt.h"
 #endif

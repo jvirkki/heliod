@@ -35,7 +35,7 @@
 #include <base/crit.h>
 #include <libaccess/cryptwrapper.h>
 #if !defined (XP_WIN32)
-#include <crypt.h>
+#include <unistd.h>
 #else
 extern "C" char *crypt(const char *key, const char *salt);
 #endif
@@ -47,20 +47,24 @@ static CRITICAL acl_crypt_crit = NULL;
  *
  * Initializes the critical section needed for crypt calls if needed.
  */
+#if defined(XP_WIN32) || defined(LINUX) || defined(AIX)
+#define ACL_CRYPT_USES_CRIT
+#endif
+
 NSAPI_PUBLIC
 void ACL_CryptCritInit(void)
 {
-#if defined(XP_WIN32)
+#if defined(ACL_CRYPT_USES_CRIT)
     acl_crypt_crit = crit_init();
 #endif
 }
 
 
-/* ACL_Crypt 
+/* ACL_Crypt
  *
  * This is a wrapper function for the crypt() function which is not
  * always thread-safe. All calls to crypt() must go through this
- * function or threads may corrupt each others data. 
+ * function or threads may corrupt each others data.
  *
  * WARNING : Callers of this function MUST call FREE() after they have
  * used this char * returned by this function.
@@ -70,16 +74,11 @@ void ACL_CryptCritInit(void)
  * Platform notes:
  *
  * Solaris : crypt(3C) is labeled MT-Safe.
- * Linux : crypt(3) is not thread safe.
- *         use crypt_r instead.
+ * Linux : crypt(3) is not thread safe; serialize with a critical section.
  * Windows : uses crypt() implemented in
  *     netsite/lib/libcrypt/crypt.c which is not thread safe.
  * HP-UX : use crypt
- * man crypt_r : ... WARNINGS ...
- *    crypt_r(), setkey_r(), and encrypt_r() are obsolescent interfaces
- *    supported only for compatibility with existing DCE applications. New
- *    multithreaded applications should use crypt().
- * AIX : use crypt_r as crypt is not MT-safe
+ * AIX : crypt() is not MT-safe; serialize with a critical section.
  * Other platforms not investigated.
  */
 NSAPI_PUBLIC
@@ -87,25 +86,13 @@ char *ACL_Crypt(const char *key, const char *salt)
 {
     char *res=NULL;
     char *enc=NULL;
-#if defined(XP_WIN32)
+#if defined(ACL_CRYPT_USES_CRIT)
     crit_enter(acl_crypt_crit);
 #endif
-#if defined(LINUX)
-    struct crypt_data data;
-    memset(&data, 0, sizeof(data));
-#endif
-#if defined(AIX)
-    CRYPTD data;
-    memset(&data, 0, sizeof(data));
-#endif
-#if defined(LINUX) || defined(AIX)
-    res = crypt_r (key, salt, &data);
-#else
-    enc = crypt(key,salt);
-    if (enc) 
+    enc = crypt(key, salt);
+    if (enc)
         res = STRDUP(enc);
-#endif
-#if defined(XP_WIN32)
+#if defined(ACL_CRYPT_USES_CRIT)
     crit_exit(acl_crypt_crit);
 #endif
     return res;
@@ -115,8 +102,8 @@ char *ACL_Crypt(const char *key, const char *salt)
  *
  * This is a wrapper function for the crypt() function which is not
  * always thread-safe. All calls to crypt() must go through this
- * function or threads may corrupt each others data. This function 
- * apart from calling crypt(), also compares the results of the 
+ * function or threads may corrupt each others data. This function
+ * apart from calling crypt(), also compares the results of the
  * crypt() with the encrypted password supplied.
  *
  * In parameters : see crypt() man page. plus const char * encrypted
@@ -125,16 +112,11 @@ char *ACL_Crypt(const char *key, const char *salt)
  * Platform notes:
  *
  * Solaris : crypt(3C) is labeled MT-Safe.
- * Linux : crypt(3) is not thread safe.
- *         use crypt_r instead.
+ * Linux : crypt(3) is not thread safe; serialize with a critical section.
  * Windows : uses crypt() implemented in
  *     netsite/lib/libcrypt/crypt.c which is not thread safe.
  * HP-UX : use crypt
- * man crypt_r : ... WARNINGS ...
- *    crypt_r(), setkey_r(), and encrypt_r() are obsolescent interfaces
- *    supported only for compatibility with existing DCE applications. New
- *    multithreaded applications should use crypt().
- * AIX : use crypt_r as crypt is not MT-safe
+ * AIX : crypt() is not MT-safe; serialize with a critical section.
  * Other platforms not investigated.
  */
 NSAPI_PUBLIC
@@ -142,24 +124,12 @@ int ACL_CryptCompare(const char *key, const char *salt, const char *encrypted)
 {
     char *enpass = NULL;
     int rv = 0;
-#if defined(XP_WIN32)
+#if defined(ACL_CRYPT_USES_CRIT)
     crit_enter(acl_crypt_crit);
 #endif
-#if defined(LINUX)
-    struct crypt_data data;
-    memset(&data, 0, sizeof(data));
-#endif
-#if defined(AIX)
-    CRYPTD data;
-    memset(&data, 0, sizeof(data));
-#endif
-#if defined(LINUX) || defined(AIX)
-    enpass = crypt_r (key, salt, &data);
-#else
     enpass = crypt(key, salt);
-#endif
     rv = strcmp(encrypted, enpass);
-#if defined(XP_WIN32)
+#if defined(ACL_CRYPT_USES_CRIT)
     crit_exit(acl_crypt_crit);
 #endif
     return rv;

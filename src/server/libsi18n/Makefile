@@ -41,19 +41,35 @@ USE_MAPFILE=1
 # disable position independent code to improve execution speed
 NO_KPIC=1
 
+override CFLAGS += -fPIC
+override CXXFLAGS += -fPIC
+
+override DYNAMIC_LIB_SUFFIX_SAFE = so
+override DYNAMIC_LIB_SUFFIX = so
+MODULE=libsi18n
+DLL_TARGET=libsi18n
+SHIP_PRIVATE_DYNAMIC_LIBRARIES=libsi18n
+
 include ${BUILD_ROOT}/make/base.mk
 
-MODULE=libsi18n
+# Linux: no mapfile support; force -fPIC for shared lib objects
+ifeq ($(OS_ARCH),Linux)
+USE_MAPFILE=
+LOCAL_CC_OPTS += -fPIC
+LOCAL_C_OPTS += -fPIC
+endif
+
+LOCAL_CFLAGS += -fPIC
+LOCAL_CPPFLAGS += -fPIC
+LOCAL_CXXFLAGS += -fPIC
 
 all::
-
 LOCAL_INC+=-I.. -I$(OBJDIR) -I../../support
 LOCAL_DEF+= -DBUILD_DLL
 LOCAL_LIBDIRS+=../base/$(OBJDIR) 
 LOCAL_LIBDIRS+=../../support/libdbm/$(OBJDIR)
 LOCAL_LIBDIRS+=../../support/NsprWrap/$(OBJDIR)
 
-DLL_TARGET=libsi18n
 DLL_OBJS=parselang getlang getstrdb getstrmem langpath
 DLL_LIBS+=libdbm
 DLL_LIBS+=nsprwrap
@@ -67,11 +83,10 @@ DLL_NONPARSED_OBJS=$(addprefix ../base/$(OBJDIR)/, \
                    $(BASE_OBJS:=.$(OBJ)))
 endif
 
-SHIP_PRIVATE_DYNAMIC_LIBRARIES=libsi18n
-
 headers::
 	$(ECHO) Building string db
 	$(MAKE) --file=makefile.step2 all publish
 
 # this should always be last!
 include ${BUILD_ROOT}/make/rules.mk
+

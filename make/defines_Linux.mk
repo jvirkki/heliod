@@ -31,20 +31,24 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+DYNAMIC_LIB_SUFFIX = so
+STATIC_LIB_SUFFIX = a
+LD_DYNAMIC = -shared
+CC_SHARED_LIB_FLAGS = -fPIC
+
 #
 # NOTE: This file is used by Enterprise, Messaging AND Collabra servers.
 #       Please do NOT change indiscriminately
 #
 
 LOCAL_COPY=0
-
-CC		=$(PRE_CC) /usr/bin/g++
-C               =$(PRE_C)  /usr/bin/gcc
+CC              = /usr/bin/g++
+C               = /usr/bin/gcc
 C++C		=$(CC)
-AR              =/usr/bin/ar
+AR              = /usr/bin/ar
 TAR             =/bin/tar
 RANLIB          =/usr/bin/ranlib
-LD		=$(PRE_LD) /usr/bin/g++
+LD              = /usr/bin/g++
 ZIP		=/usr/bin/zip
 UNZIP		=/usr/bin/unzip
 GZIP		=/bin/gzip
@@ -88,17 +92,30 @@ endif
 RPATH_PREFIX	= -Wl,-rpath,
 RPATH_ORIGIN	= \$$ORIGIN
 
-PLATFORM_DEF	= -DLinux -DLINUX -D_REENTRANT -D_LARGEFILE64_SOURCE
+# Modern glibc auto-enables _FORTIFY_SOURCE whenever optimization is used
+# (CC_DEBUG/C_DEBUG above pass -O3). This legacy codebase's old-style K&R
+# variadic declarations (e.g. src/support/libdbm) are incompatible with the
+# fortified stdio.h wrappers glibc generates, so disable it explicitly.
+#
+# Defining __NO_INLINE__ suppresses glibc's __USE_EXTERN_INLINES stdio
+# wrappers (getc_unlocked, putchar_unlocked, feof_unlocked, etc. in
+# bits/stdio.h), which glibc only emits when __OPTIMIZE__ is defined
+# (i.e. once -O3 is actually passed, as it now is). This legacy codebase
+# (e.g. src/support/libdbm/h_func.c and nsres.c) ends up with duplicate
+# out-of-line copies of those symbols across translation units otherwise,
+# causing a "multiple definition" link error. This does not disable actual
+# inlining by GCC (-fno-inline is not passed), only glibc's own feature
+# check for whether to provide these wrappers.
+PLATFORM_DEF	= -DLinux -DLINUX -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FORTIFY_SOURCE=0 -D__NO_INLINE__
 
 # -verbose for printing all informational messags
 # -w0 for stricter than ANSI-C prototype warnings
 # -fPIC is needed for any code that ends up in a shared library
-ifndef NO_KPIC
 PLATFORM_CC_OPTS = -fPIC
 PLATFORM_C_OPTS  = -fPIC
-endif
+
 PLATFORM_LD_OPTS =
-LD_DYNAMIC	= $(PLATFORM_LD_OPTS) -shared
+
 LD_SYMBOLIC	= -Wl,-Bsymbolic
 
 ifdef BUILD64
@@ -109,7 +126,7 @@ endif
 
 # These libraries are platform-specific, not system-specific
 # WARNING Don't use the -thread option, use -pthread option
-PLATFORM_LIB	 += $(PRE_PLATFORM_LIB) pthread dl crypt resolv
+PLATFORM_LIB	 += $(PRE_PLATFORM_LIB) pthread dl :libcrypt.so.1 resolv
 
 JNI_MD_NAME	= linux
 JNI_MD_SYSNAME	= i386

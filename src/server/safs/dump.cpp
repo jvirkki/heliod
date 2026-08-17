@@ -46,6 +46,7 @@
 #include "frame/http.h"
 #include "frame/httpfilter.h"
 #include "httpdaemon/statsmanager.h"
+#include "httpdaemon/reverseproxyconfig.h"
 #include "safs/dump.h"
 
 #define SAFESTRING(a) ((a) ? (a) : "")
@@ -58,6 +59,7 @@ enum SessionColumnEnum {
     SESSION_COLUMN_PROCESS = 0,
     SESSION_COLUMN_STATUS,
     SESSION_COLUMN_CLIENT,
+    SESSION_COLUMN_CLIENT_REPORTED,
     SESSION_COLUMN_AGE,
     SESSION_COLUMN_VS,
     SESSION_COLUMN_METHOD,
@@ -74,6 +76,7 @@ static const NSString session_column_labels[SESSION_COLUMN_COUNT] = {
     "Process",
     "Status",
     "Client",
+    "Reported Client",
     "Age",
     "VS",
     "Method",
@@ -647,6 +650,14 @@ int write_stats_dump(PRFileDesc *fd, StatsHeaderNode *hdr)
 
         PRTime now = PR_Now();
 
+        // As in safs/perf.cpp: which of "Client"/"Reported Client" to
+        // populate is controlled by the global ReverseProxyLogAttribution,
+        // since this dump spans all virtual servers. "actual" shows only
+        // "Client"; "proxied-ip" shows only "Reported Client" (falling back
+        // to "Client" for any session where a reported IP wasn't resolved);
+        // "both" always shows both.
+        ReverseProxyLogAttribution attribution = ReverseProxyConfig_GetGlobal().getLogAttribution();
+
         // Collect stats from each session
         y = 0;
         for (process = hdr->process; process; process = process->next) {
@@ -660,9 +671,25 @@ int write_stats_dump(PRFileDesc *fd, StatsHeaderNode *hdr)
                     rows[y].columns[SESSION_COLUMN_PROCESS].printf("%u", process->procStats.pid);
                     rows[y].columns[SESSION_COLUMN_STATUS] = StatsManager::getMode(&thread->threadStats);
 
-                    char addr[NET_ADDR_STRING_SIZE];
-                    net_addr_to_string(&thread->threadStats.addressClient, addr, sizeof(addr));
-                    rows[y].columns[SESSION_COLUMN_CLIENT] = addr;
+                    PRBool haveReported = (thread->threadStats.addressClientReported.raw.family != 0);
+                    PRBool showReported = haveReported &&
+                        (attribution == REVERSE_PROXY_LOG_ATTRIBUTION_PROXIED_IP ||
+                         attribution == REVERSE_PROXY_LOG_ATTRIBUTION_BOTH);
+                    PRBool showActual = !showReported ||
+                        (attribution == REVERSE_PROXY_LOG_ATTRIBUTION_BOTH);
+
+                    if (showActual) {
+                        char addr[NET_ADDR_STRING_SIZE];
+                        net_addr_to_string(&thread->threadStats.addressClient, addr, sizeof(addr));
+                        rows[y].columns[SESSION_COLUMN_CLIENT] = addr;
+                    }
+
+                    if (showReported) {
+                        char reportedAddr[NET_ADDR_STRING_SIZE];
+                        net_addr_to_string(&thread->threadStats.addressClientReported,
+                                           reportedAddr, sizeof(reportedAddr));
+                        rows[y].columns[SESSION_COLUMN_CLIENT_REPORTED] = reportedAddr;
+                    }
 
                     rows[y].timeRequestStarted = thread->threadStats.timeRequestStarted;
                     if (rows[y].timeRequestStarted != 0) {

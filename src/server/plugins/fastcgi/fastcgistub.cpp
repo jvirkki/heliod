@@ -46,7 +46,9 @@ using namespace std;
   #include <sys/stat.h>
 
   #if !defined(LINUX)
-    #include <sys/stropts.h>
+    #if defined(HAVE_SYS_STROPTS_H)
+#include <sys/stropts.h>
+#endif
   #endif
 
   #if !defined(USE_CONNLD)

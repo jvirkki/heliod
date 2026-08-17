@@ -55,6 +55,7 @@ public:
     void setMode(PRUint32 mode);
     void recordKeepaliveHit();
     void beginClient(PRNetAddr* remoteAddress);
+    void updateReportedClient(const PRNetAddr* reportedAddress);
     void beginRequest();
     inline ptrdiff_t inFunction(ptrdiff_t name);
     inline void beginFunction();

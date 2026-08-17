@@ -79,17 +79,17 @@ static const int MAX_BUFFER = 1024;
 static int
 is_groupTargetAttr(char* attr_desc,const char* groupTargetAttr)
 {
-    auto int retval = LDAPU_FAILED;
-    auto char* desc = strdup (attr_desc);
+    int retval = LDAPU_FAILED;
+    char* desc = strdup (attr_desc);
     if (desc == NULL) {
 	retval = LDAPU_ERR_OUT_OF_MEMORY;
     } else {
-	auto const char* brk  = " ;";
-	auto char* next = NULL;
-	auto char* attr = ldap_utf8strtok_r (desc, brk, &next);
+	const char* brk  = " ;";
+	char* next = NULL;
+	char* attr = ldap_utf8strtok_r (desc, brk, &next);
 	if (attr && (!ldapu_strcasecmp(attr, groupTargetAttr) ||
 		     !ldapu_strcasecmp(attr, "commonName"))) {
-	    auto char* option;
+	    char* option;
 	    retval = LDAPU_SUCCESS; /* attribute type is correct */
 	    while (option = ldap_utf8strtok_r (NULL, brk, &next)) {
 		if (!ldapu_strcasecmp(option, "binary")) {
@@ -304,7 +304,7 @@ _construct_group_filter (LdapRealm *pLdapRealm,LdapDNList &m1, char** filter)
     }
 
     if (err == LDAPU_SUCCESS) {
-        auto const char* fmt =
+        const char* fmt =
           "(|(&(objectclass=groupofuniquenames)(|%s))"
               "(&(objectclass=group)(|%s))"
             "(&(objectclass=groupofnames)(|%s)))";
@@ -566,7 +566,7 @@ LdapSession::usercert_groupids(const char* userdn,
 				char **group_out)
 {
     LdapDNList candidates, newcandidates;
-    auto int retval = LDAPU_FAILED;
+    int retval = LDAPU_FAILED;
     CList<LdapEntry> direct_hits;
     CList<LdapEntry> candidate_hits;
     LdapEntry *entry;
@@ -581,7 +581,7 @@ LdapSession::usercert_groupids(const char* userdn,
 	// first, look through all groupOfCertificates for our cert
 	const char *attrs[] = { ldapRealm->getGroupTargetAttr(), "memberCertificateDescription", 0 };
 	LdapSearchResult *res;
-	auto int err;
+	int err;
 
 	err = find (baseDN, LDAP_SCOPE_SUBTREE,
 			  "(&(objectClass=groupOfCertificates)(memberCertificateDescription=*))",
@@ -664,10 +664,10 @@ LdapSession::usercert_groupids(const char* userdn,
     for (; recurse >= 0  && !candidates.is_empty(); --recurse)
     {
 	// we're still recursing, and the list of candidates is not empty
-	auto const char	*attrs[] = { ldapRealm->getGroupTargetAttr(), 0 };
+	const char	*attrs[] = { ldapRealm->getGroupTargetAttr(), 0 };
 	LdapSearchResult *res;
-	auto char* filter;
-	auto int rv;
+	char* filter;
+	int rv;
 
 	newcandidates.clear();
 	// ############################################################################

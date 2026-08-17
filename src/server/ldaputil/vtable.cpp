@@ -31,6 +31,8 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+
 #include "ldaputili.h"
 #include <ldap.h>
 #ifdef USE_LDAP_SSL
@@ -67,20 +69,20 @@ ldapuVd_set_option( LDAP *ld, int opt, void *val )
 static LDAP_CALL LDAP_CALLBACK int
 ldapuVd_simple_bind_s( LDAP* ld, const char *username, const char *passwd )
 {
-    return ldap_simple_bind_s (ld, username, passwd);
+    return ldapu_simple_bind_s (ld, username, passwd);
 }
 
 static LDAP_CALL LDAP_CALLBACK int
 ldapuVd_unbind( LDAP *ld )
 {
-    return ldap_unbind (ld);
+    return ldapu_unbind (ld);
 }
 
 static LDAP_CALL LDAP_CALLBACK int
 ldapuVd_search_s( LDAP* ld, const char* baseDN, int scope, const char* filter, 
 	char** attrs, int attrsonly, LDAPMessage** result )
 {
-    return ldap_search_s (ld, baseDN, scope, filter, attrs, attrsonly, result);
+    return ldapu_search_s (ld, baseDN, scope, filter, attrs, attrsonly, result);
 }
 
 static LDAP_CALL LDAP_CALLBACK int
@@ -122,13 +124,13 @@ ldapuVd_next_attribute( LDAP* ld, LDAPMessage* entry, BerElement* iter)
 static LDAP_CALL LDAP_CALLBACK char**
 ldapuVd_get_values( LDAP *ld, LDAPMessage *entry, const char *desc )
 {
-    return ldap_get_values (ld, entry, desc);
+    return ldapu_get_values (ld, entry, desc);
 }
 
 static LDAP_CALL LDAP_CALLBACK struct berval**
 ldapuVd_get_values_len( LDAP *ld, LDAPMessage *entry, const char *desc )
 {
-    return ldap_get_values_len (ld, entry, desc);
+    return ldapu_get_values_len (ld, entry, desc);
 }
 
 #else
@@ -139,20 +141,20 @@ ldapuVd_get_values_len( LDAP *ld, LDAPMessage *entry, const char *desc )
 #define ldapuVd_init            ldap_init
 #endif
 #define ldapuVd_set_option      ldap_set_option
-#define ldapuVd_simple_bind_s   ldap_simple_bind_s
-#define ldapuVd_unbind          ldap_unbind
+#define ldapuVd_simple_bind_s   ldapu_simple_bind_s
+#define ldapuVd_unbind          ldapu_unbind
 #define ldapuVd_set_option      ldap_set_option
-#define ldapuVd_simple_bind_s   ldap_simple_bind_s
-#define ldapuVd_unbind          ldap_unbind
-#define ldapuVd_search_s        ldap_search_s
+#define ldapuVd_simple_bind_s   ldapu_simple_bind_s
+#define ldapuVd_unbind          ldapu_unbind
+#define ldapuVd_search_s        ldapu_search_s
 #define ldapuVd_count_entries   ldap_count_entries
 #define ldapuVd_first_entry     ldap_first_entry
 #define ldapuVd_next_entry      ldap_next_entry
 #define ldapuVd_get_dn          ldap_get_dn
 #define ldapuVd_first_attribute ldap_first_attribute
 #define ldapuVd_next_attribute  ldap_next_attribute
-#define ldapuVd_get_values      ldap_get_values
-#define ldapuVd_get_values_len  ldap_get_values_len
+#define ldapuVd_get_values      ldapu_get_values
+#define ldapuVd_get_values_len  ldapu_get_values_len
 
 #endif
 
@@ -163,25 +165,25 @@ ldapuVd_get_values_len( LDAP *ld, LDAPMessage *entry, const char *desc )
 static int LDAP_CALL LDAP_CALLBACK
 ldapuVd_msgfree( LDAP *ld, LDAPMessage *chain )
 {
-    return ldap_msgfree (chain);
+    return ldapu_msgfree (ld, chain);
 }
 
 static void LDAP_CALL LDAP_CALLBACK
 ldapuVd_memfree( LDAP *ld, void *dn )
 {
-    ldap_memfree (dn);
+    ldapu_memfree (ld, dn);
 }
 
 static void LDAP_CALL LDAP_CALLBACK
 ldapuVd_ber_free( LDAP *ld, BerElement *ber, int freebuf )
 {
-    ldap_ber_free (ber, freebuf);
+    ldapu_ber_free (ld, ber, freebuf);
 }
 
 static void LDAP_CALL LDAP_CALLBACK
 ldapuVd_value_free( LDAP *ld, char **vals )
 {
-    ldap_value_free (vals);
+    ldapu_value_free (ld, vals);
 }
 
 static void LDAP_CALL LDAP_CALLBACK
@@ -370,24 +372,35 @@ ldapu_get_values( LDAP *ld, LDAPMessage *entry, const char *desc )
 	return ldapu_VTable.ldapuV_get_values (ld, entry, desc);
     } else if (!ldapu_VTable.ldapuV_value_free
 	       && ldapu_VTable.ldapuV_get_values_len) {
-	auto struct berval** bvals =
+	struct berval** bvals =
 		  ldapu_VTable.ldapuV_get_values_len (ld, entry, desc);
 	if (bvals) {
-	    auto char** vals = (char**)
+	    char** vals = (char**)
 	      ldapu_malloc ((ldap_count_values_len (bvals) + 1)
 			    * sizeof(char*));
 	    if (vals) {
-		auto char** val;
-		auto struct berval** bval;
+		char** val;
+		struct berval** bval;
 		for (val = vals, bval = bvals; *bval; ++val, ++bval) {
-		    auto const size_t len = (*bval)->bv_len;
+		    const size_t len = (*bval)->bv_len;
 		    *val = (char*) ldapu_malloc (len + 1);
+		    if (!*val) {
+			while (val > vals) {
+			    --val;
+			    ldapu_free (*val);
+			}
+			ldapu_free (vals);
+			ldapu_value_free_len (ld, bvals);
+			return NULL;
+		    }
 		    memcpy (*val, (*bval)->bv_val, len);
 		    (*val)[len] = '\0';
 		}
 		*val = NULL;
+		ldapu_value_free_len (ld, bvals);
 		return vals;
 	    }
+	    ldapu_value_free_len (ld, bvals);
 	}
     }
     return NULL;
@@ -399,7 +412,7 @@ ldapu_value_free( LDAP *ld, char **vals )
     if (ldapu_VTable.ldapuV_value_free) {
 	ldapu_VTable.ldapuV_value_free (ld, vals);
     } else if (!ldapu_VTable.ldapuV_get_values && vals) {
-	auto char** val;
+	char** val;
 	for (val = vals; *val; ++val) {
 	    free (*val);
 	}
@@ -411,29 +424,43 @@ struct berval**
 ldapu_get_values_len( LDAP *ld, LDAPMessage *entry, const char *desc )
 {
     if (ldapu_VTable.ldapuV_get_values_len) {
-	return ldapu_VTable.ldapuV_get_values_len (ld, entry, desc);
+        return ldapu_VTable.ldapuV_get_values_len (ld, entry, desc);
     } else if (!ldapu_VTable.ldapuV_value_free_len
-	       && ldapu_VTable.ldapuV_get_values) {
-	auto char** vals =
-		  ldapu_VTable.ldapuV_get_values (ld, entry, desc);
-	if (vals) {
-	    auto struct berval** bvals = (struct berval**)
-	      ldapu_malloc ((ldap_count_values (vals) + 1)
-			    * sizeof(struct berval*));
-	    if (bvals) {
-		auto char** val;
-		auto struct berval** bval;
-		for (val = vals, bval = bvals; *val; ++val, ++bval) {
-		    auto const size_t len = strlen(*val);
-		    *bval = (struct berval*) ldapu_malloc (sizeof(struct berval) + len);
-		    (*bval)->bv_len = len;
-		    (*bval)->bv_val = ((char*)(*bval)) + sizeof(struct berval);
-		    memcpy ((*bval)->bv_val, *val, len);
-		}
-		*bval = NULL;
-		return bvals;
-	    }
-	}
+               && ldapu_VTable.ldapuV_get_values) {
+        char **vals = ldapu_VTable.ldapuV_get_values (ld, entry, desc);
+        if (vals) {
+            size_t nv = 0;
+            for (char **pval = vals; *pval; ++pval) {
+                ++nv;
+            }
+
+            struct berval **bvals = (struct berval **)
+                ldapu_malloc ((nv + 1) * sizeof(struct berval *));
+            if (bvals) {
+                char **val;
+                struct berval **bval;
+                for (val = vals, bval = bvals; *val; ++val, ++bval) {
+                    const size_t len = strlen(*val);
+                    *bval = (struct berval *) ldapu_malloc(sizeof(struct berval) + len + 1);
+                    if (!*bval) {
+                        while (bval > bvals) {
+                            --bval;
+                            ldapu_free (*bval);
+                        }
+                        ldapu_free (bvals);
+                        ldapu_value_free (ld, vals);
+                        return NULL;
+                    }
+                    (*bval)->bv_len = len;
+                    (*bval)->bv_val = ((char *)(*bval)) + sizeof(struct berval);
+                    memcpy((*bval)->bv_val, *val, len + 1);
+                }
+                *bval = NULL;
+                ldapu_value_free (ld, vals);
+                return bvals;
+            }
+            ldapu_value_free (ld, vals);
+        }
     }
     return NULL;
 }
@@ -444,7 +471,7 @@ ldapu_value_free_len( LDAP *ld, struct berval **vals )
     if (ldapu_VTable.ldapuV_value_free_len) {
 	ldapu_VTable.ldapuV_value_free_len (ld, vals);
     } else if (!ldapu_VTable.ldapuV_get_values_len && vals) {
-	auto struct berval** val;
+	struct berval** val;
 	for (val = vals; *val; ++val) {
 	    free (*val);
 	}

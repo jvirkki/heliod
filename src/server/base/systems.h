@@ -443,7 +443,11 @@
 #endif
 
 #ifndef SA_HANDLER_T
-#define SA_HANDLER_T(x) (void (*)())x 
+#ifdef __cplusplus
+#define SA_HANDLER_T(x) (void (*)(int))(x)
+#else
+#define SA_HANDLER_T(x) (void (*)())x
+#endif 
 #endif
 
 #ifndef THROW_HACK

@@ -40,6 +40,10 @@ MODULE=fastcgi
 
 include $(BUILD_ROOT)/make/base.mk
 
+CC_FLAGS += -fPIC
+CFLAGS += -fPIC
+CXXFLAGS += -fPIC
+
 all::
 
 RC_FLAGS+=$(DEFINES)
@@ -54,6 +58,7 @@ endif #WINNT
 
 EXE_TARGET=Fastcgistub
 EXE_OBJS+=util fcgiprocess fastcgistub
+util.cpp_CC_FLAGS += -fPIC
 EXE_LIBS=nsprwrap support
 
 SHIP_PLUGIN_BINARIES=$(EXE_TARGET)

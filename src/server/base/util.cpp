@@ -2118,7 +2118,7 @@ util_strerror(int errnum, char *buf, int buflen)
      * This is consistent with strerror() and differs from system_errmsg().
      */
 
-    if (errmsg < 0) {
+    if (errmsg == NULL) {
         /* Not really an OS error -- must be one of ours */
         errmsg = nscperror_lookup(errnum);
     }

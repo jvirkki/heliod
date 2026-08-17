@@ -47,6 +47,8 @@ intended publication of this Source Code.
 */
 
 #include <ldap.h>
+#include <ctype.h>
+
 #include <netsite.h>
 #include <string.h>
 #include <base/crit.h>
@@ -389,7 +391,7 @@ char *acl_next_token (char **ptr, char delim)
     if (!token) { *ptr = 0; return 0; }
 
     /* ignore leading whitespace */
-    while(*token && ldap_utf8isspace(token)) token++;
+    while(*token && isspace((unsigned char)*token)) token++;
 
     if (!*token) { *ptr = 0; return 0; }
 
@@ -424,7 +426,7 @@ const char *acl_next_token_len (const char *ptr, char delim, int *len)
     if (!token) { return 0; }
 
     /* ignore leading whitespace */
-    while(*token && ldap_utf8isspace((char *)token)) token++;
+    while(*token && isspace((unsigned char)*token)) token++;
 
     if (!*token) { return 0; }
     if (*token == delim) { return token; } /* str starts with delim! */

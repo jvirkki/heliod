@@ -512,6 +512,17 @@ typedef struct _StatsThreadSlot {
     PRNetAddr addressClient;
     PRTime    timeRequestStarted;
 
+    /*
+     * Reverse-proxy-forwarded client address, valid only when
+     * addressClientReported.raw.family != 0. Populated from the
+     * ReverseProxyIPHeader (or the current virtual server's
+     * <reverse-proxy><ip-header>) when the request's socket peer is a
+     * trusted proxy; see httpdaemon/reverseproxyconfig.h. Whether this
+     * field or addressClient represents the "client" in perfdump is
+     * controlled by ReverseProxyLogAttribution / <log-attribution>.
+     */
+    PRNetAddr addressClientReported;
+
     /* Note: this structure may grow in future versions */
 } StatsThreadSlot;
 

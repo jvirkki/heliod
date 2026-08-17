@@ -62,8 +62,7 @@ typedef struct LIBRARY_LIST {
 } LIBRARY_LIST;
 
 static struct LIBRARY_LIST* LibListBase[NUM_LIBRARY_BUCKETS];
-static countLibrary = 0;
-                        
+static int countLibrary = 0;
 /*******************************************************************************/
 
 void

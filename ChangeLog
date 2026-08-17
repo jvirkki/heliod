@@ -1,3 +1,71 @@
+2026-08-17  Joe McCabe <joe@jmccabe.org>
+
+        * version 0.4
+
+            Build support for Ubuntu 26.04 LTS (x86_64) with GCC/G++ 15,
+            GNU Make 4.4 and current NSS, NSPR, Xerces-C, Xalan-C and
+            MozLDAP 6.0.5.  Platform defaults now produce 64-bit
+            binaries without BUILD64.
+
+            Added BUILD.md with build instructions and dependencies,
+            referencing the sbc/ helpers for building the SBC tree.
+
+            Build system: sensible defaults for library suffixes,
+            dynamic-link and PIC flags and compiler paths; Sun-style
+            mapfiles disabled on Linux; position-independent code
+            forced for all shared libraries and plugins; rpath-link
+            entries for webservd; Debian LDAP SDK include layout
+            (mozldap public headers and the MozLDAP source tree for
+            ldap_ssl.h); Java source level raised to 8; Complex.cpp
+            built at -O1 to avoid exhausting memory on low-RAM hosts.
+
+            Modern toolchain compatibility (see TODO.md for the full
+            tracker): -D_FORTIFY_SOURCE=0 and -D__NO_INLINE__ to work
+            around legacy K&R variadic code and duplicate glibc stdio
+            inline symbols; -fcommon and -fpermissive on Debian/Ubuntu;
+            removed obsolete "auto" storage specifiers, const-
+            correctness and type-mismatch fixes; header availability
+            fixes (sys/ioctl.h, sys/stropts.h, errno.h, getopt.h for
+            svrctl, crypt.h removal, LDAP_CALL/LDAP_CALLBACK fallbacks).
+
+            Library API updates: NSPR input source and XML parser
+            adjusted for Xerces-C 3.x (XMLSize_t/XMLFilePos,
+            getContentType); NSS and Xalan type signature fixes; raw
+            OpenLDAP calls switched to the ldapu_* wrappers.
+
+            Runtime fixes for modern Linux: use close_range() in the
+            CGI stub so fd cleanup is not pathologically slow under
+            large RLIMIT_NOFILE; cap fd-based auto-sizing of the
+            connection-queue, keep-alive and file-cache tables at
+            65536 to avoid OOM at startup with very high ulimit -n;
+            serialize crypt() calls now that crypt_r is no longer
+            used; SEM_FLOCK semaphore grab reworked to retry on
+            EINTR/EAGAIN; guard SSL_ImportFD() with NSS_IsInitialized()
+            so servers started without TLS can still initialize NSS
+            policy later; procfs and signal-handling fixes; missing
+            return in ChildExec::_startListener().
+
+            Bug fixes: parsexml PID_FILE/TEMP_DIR resolution restored
+            by re-enabling SAX2 namespaces; null-pointer checks in
+            servact_uri2path, servact_lookup and control_dashu;
+            libsed.h extern "C" brace mismatch; HP-UX added to the
+            temp-file path logic.
+
+            New feature: opt-in reverse-proxy client IP attribution
+            for logging and perfdump.  New magnus.conf directives
+            ReverseProxyIPHeader, ReverseProxyTrustedIPs (IPv4/IPv6
+            addresses or CIDR ranges) and ReverseProxyLogAttribution
+            (actual|proxied-ip|both), with a per-virtual-server
+            <reverse-proxy> element in server.xml that can override
+            them.  When a request arrives from a trusted proxy the
+            forwarded client IP is reported in the errors log and in
+            a new perfdump "Reported Client" column; the authoritative
+            client IP used for ACLs and security is unchanged.
+
+            General cleanup pass removing dead code and cruft; smoke
+            test harness updated so "make -C test" runs after the
+            build; .gitignore additions.
+
 
 2015-10-14  Jyri J. Virkki  <jyri@virkki.com>
 

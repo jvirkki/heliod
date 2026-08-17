@@ -42,6 +42,7 @@ class ListenSocketConfig;
 
 #include "httpdaemon/httpheader.h"
 #include "base/session.h"
+#include "base/net.h"
 #include "frame/req.h"
 #include "frame/accel.h"
 #include "frame/httpact.h"
@@ -86,6 +87,32 @@ class HTTPDAEMON_DLL HttpRequest {
     AcceleratorHandle *GetAcceleratorHandle() const;
     httpd_objset* getObjset();
     const VirtualServer* getVS() const { return vs; }
+
+    /**
+     * Returns the reverse-proxy-forwarded client IP for this request if
+     * the feature is enabled for its virtual server, the TCP peer is a
+     * trusted proxy, and the configured header carries a resolvable IP
+     * address. Otherwise, returns the same value as
+     * GetDaemonSession().GetClientIP().
+     *
+     * This accessor is intended for logging and perfdump attribution only.
+     * It must never be used for ACL/security decisions -- use
+     * GetDaemonSession().GetClientIP() (the actual TCP peer address) for
+     * those.
+     */
+    const char* GetReportedClientIP();
+
+    /**
+     * Convenience wrapper for error-log-style messages. Returns the value
+     * appropriate for the effective ReverseProxyLogAttribution (global
+     * ReverseProxyLogAttribution or the virtual server's
+     * <reverse-proxy><log-attribution>):
+     *   - "actual"      -> GetDaemonSession().GetClientIP() (the real TCP peer).
+     *   - "proxied-ip"  -> GetReportedClientIP() (forwarded IP, if any).
+     *   - "both"        -> a combined string "<actual> (reported: <reported>)".
+     * Never used for ACL/security decisions.
+     */
+    const char* GetLoggedClientIP();
 
  private:
     void             UnacceleratedRespond();
@@ -151,6 +178,14 @@ class HTTPDAEMON_DLL HttpRequest {
     // Information about the virtual server associated with this request
     VirtualServer* vs;
     const char* serverHostname;
+
+    // Lazily-resolved, per-request cache for GetReportedClientIP().
+    char         reportedClientIP[NET_ADDR_STRING_SIZE];
+    PRBool       fReportedClientIPResolved;
+
+    // Lazily-formatted, per-request buffer for GetLoggedClientIP() when
+    // ReverseProxyLogAttribution is "both": "<actual> (reported: <reported>)".
+    char         loggedClientIPBoth[2 * NET_ADDR_STRING_SIZE + 32];
 
     // NSAPI SAF we're currently executing
     const char *fn;

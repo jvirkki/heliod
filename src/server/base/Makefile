@@ -44,6 +44,9 @@ USE_PCRE=1
 NO_KPIC=1
 
 include ${BUILD_ROOT}/make/base.mk
+nscperror.c_CC_FLAGS += -fPIC
+override LOCAL_CFLAGS += -fPIC
+override LOCAL_CPPFLAGS += -fPIC
 
 MODULE=LibBase
 
@@ -71,6 +74,13 @@ AR_OBJS=$(BASEOBJS)
 #				)
 #endif
 
+$(OBJDIR)/nscperror.o: nscperror.c
+	$(PRECC) $(CC) -fPIC $(CC_FLAGS) $($<_CC_FLAGS) -c \
+		-o $@ $<
+
 # this should always be last!
 include ${BUILD_ROOT}/make/rules.mk
 
+
+# Needed so sem.cpp selects the Linux semaphore branch
+sem.cpp_CC_FLAGS += -DLinux

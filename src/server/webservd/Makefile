@@ -102,6 +102,7 @@ DLL_OBJS=
 # template instantiation
 ifeq ($(OS_ARCH),OSF1)
 LD_FLAGS += -ptr ../httpdaemon/$(OBJDIR)
+LD_LIBS += -l:libcrypt.so.1
 endif
 ifeq ($(OS_ARCH),SunOS)
 #LD_FLAGS += -ptr../ldaputil/$(OBJDIR)
@@ -114,7 +115,7 @@ endif
 
 DLL_LIBS+=$(CLIENTLIBS)
 DLL_LIBS+=nsfc nstp nstime support nsprwrap xp
-DLL_LIBS+=libcrypt libsi18n httpparser sed
+DLL_LIBS+=libcrypt :libcrypt.so.1 libsi18n httpparser sed
 DLL_LIBS+=$(ARES_LIB)
 DLL_LIBS+=$(Z_LIB)
 DLL_LIBS+=$(PCRE_LIB)
@@ -192,6 +193,9 @@ EXE_LIBS+=libdbm
 endif
 
 EXE_LIBDIRS=$(OBJDIR)
+
+# Help ld resolve transitive shared-library dependencies of libns-httpd40.so.
+LD_RPATHS += $(foreach d,$(LOCAL_LIBDIRS) $(EXE_LIBDIRS) ../../../internal/$(OBJDIR)/lib /usr/lib/nss $(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/lib,-Wl,-rpath-link,$(d))
 # link security libs into DAEMON_DLL
 DLL_LIBS+=$(SSLDAP_LIB) libdbm
 

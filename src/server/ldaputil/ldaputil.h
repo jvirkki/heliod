@@ -143,6 +143,14 @@ extern int ldapu_find (LDAP *ld, const char *base, int scope,
 
 typedef struct {
 #ifdef USE_LDAP_SSL
+#ifndef LDAP_CALLBACK
+#define LDAP_CALLBACK
+#endif
+
+#ifndef LDAP_CALL
+#define LDAP_CALL
+#endif
+
     LDAP*       (LDAP_CALL LDAP_CALLBACK *ldapuV_ssl_init)         ( const char*, int, int );
 #else
     LDAP*       (LDAP_CALL LDAP_CALLBACK *ldapuV_init)             ( const char*, int );

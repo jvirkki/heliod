@@ -252,7 +252,6 @@ NSPR_END_EXTERN_C
 
 NSAPI_PUBLIC char *util_host_port_suffix(char *h);
 
-NSAPI_PUBLIC const char *util_host_port_suffix(const char *h);
 
 #endif
 

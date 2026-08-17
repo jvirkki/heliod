@@ -61,6 +61,15 @@ tarball:
 	cd src/server/public && $(MAKE) $(STDOPTS) all publish
 	cd templates && $(MAKE) -f Makefile.tarball tarball
 
+# Assembles the same deployable artifact tree as `tarball` --
+# work/$(BASE_STRING)/, with binaries, libs, headers, the DTD schema, and
+# the https-template/ instance skeleton -- but stops short of actually
+# tar/gzipping it. Requires SBC (see BUILD.md).
+stage:
+	cd src && $(MAKE) $(STDOPTS) all publish
+	cd src/server/public && $(MAKE) $(STDOPTS) all publish
+	cd templates && $(MAKE) -f Makefile.tarball tree
+
 install:
 	cd templates;$(MAKE) $(STDOPTS) install
 

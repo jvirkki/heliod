@@ -41,10 +41,13 @@
 TOOL_ROOT	=/usr
 NSTOOL_ROOT     =/usr
 
-CC              =$(ECHO) define CC in the platform definitions.
-C               =$(ECHO) define C  in the platform definitions.
-AR              =$(ECHO) define AR in the platform definitions.
-LD              =$(ECHO) define LD in the platform definitions.
+C               = /usr/bin/gcc
+CC              = /usr/bin/g++
+CXX             = /usr/bin/g++
+AR              = /usr/bin/ar
+RANLIB = ranlib
+LD              = /usr/bin/g++
+#LD              = /usr/bin/g++
 
 ### for installer
 CPPCMD		=$(C) -E
@@ -105,8 +108,7 @@ GENRB		=$(ENV) $(LD_LIB_VAR)=$(ICU_DIR)/lib $(ICU_DIR)/sbin/genrb
 OBJ =o
 SBR =o
 CPP =cpp
-STATIC_LIB_SUFFIX=a
-DYNAMIC_LIB_SUFFIX=so
+
 LIBPREFIX=lib
 
 COMMENT=\#

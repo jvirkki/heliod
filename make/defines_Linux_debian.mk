@@ -33,13 +33,15 @@
 
 # Modified 2011 jyri@virkki.com
 
+include ${BUILD_ROOT}/make/defines_Linux.mk
+
 LDAPSDK_VERSION=6_0_5
 
 NSPR_INC=-I/usr/include/nspr
 NSPR_LIBDIR=
 NSS_INC=-I/usr/include/nss
 NSS_LIBDIR=/usr/lib/nss
-LDAPSDK_INC=-I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
+LDAPSDK_INC=-I$(SBC)/ldapsdk/work/mozldap-$(subst _,.,$(LDAPSDK_VERSION))/mozilla/dist/public/ldap -I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
 LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/lib
 ZLIB_INC=
 ZLIB_LIBDIR=
@@ -51,7 +53,16 @@ PCRE_INC=
 PCRE_LIBDIR=
 ICU_INC=
 ICU_LIBDIR=
-SASL_INC=
+SASL_INC=/usr/include/sasl
 SASL_LIBDIR=
 
+SBC_PUBLISH_LDAPSDK=1
+
+# Position-independent code is required for shared libraries on Linux/x86-64.
+# -fcommon restores the pre-GCC-10 default of tolerating duplicate tentative
+# definitions across translation units (e.g. compat stdio shims defined in
+# both src/support/libdbm/h_func.c and nsres.c), which this legacy codebase
+# relies on and which modern GCC's -fno-common default breaks at link time.
+PLATFORM_CC_OPTS = -fPIC -fpermissive -fcommon
+PLATFORM_C_OPTS  = -fPIC -fpermissive -fcommon
 RUNTIME_LIBDIR=$(NSS_LIBDIR)

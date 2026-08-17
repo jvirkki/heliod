@@ -585,7 +585,7 @@ PRBool SunTest :: run() // test execution
         };
 
         // now compare it with the gold
-        if ( (definition->getGoldLength() == retlen) && (definition->getGold()) && (returned>=0) &&
+        if ( (definition->getGoldLength() == retlen) && (definition->getGold()) && (returned != NULL) &&
                  (0 == memcmp(returned, definition->getGold(), retlen)) )
         {
             // got the expected response
@@ -768,7 +768,7 @@ void Test :: setInstnum(PRInt32 in)
     instnum = in;
 };
 
-void SunTestSuite :: addScrubber(NSString apath, char* name, RegexScrubber*& scrubber)
+void SunTestSuite :: addScrubber(NSString apath, const char* name, RegexScrubber*& scrubber)
 {
     apath.append(name);
     PRFile cleaner(apath.data(), PR_RDONLY, 0);
@@ -964,7 +964,7 @@ SunTestSuite :: SunTestSuite(PtrList<char>& groups, const char* dir, RegexList& 
     platform_regex.append("::");
     platform_regex.append(platform);
     platform_regex.append("_ONLY::");
-    char* otherplatforms = "::.*_ONLY::";
+    const char* otherplatforms = "::.*_ONLY::";
 
     platform_cleaner.add_regex((void*) platform_regex.data(), platform_regex.length(), (void *)"", 0);
 
@@ -1171,7 +1171,7 @@ SunTestProperties :: SunTestProperties(SunTestSuite& suite, NSString location, S
     addScrubber(suite, location, "server_cleaner", server_cleaner);
 };
 
-void SunTestProperties :: addScrubber(SunTestSuite& suite, NSString apath, char* name, RegexScrubber*& scrubber)
+void SunTestProperties :: addScrubber(SunTestSuite& suite, NSString apath, const char* name, RegexScrubber*& scrubber)
 {
     apath.append("/");
     apath.append(name);
@@ -1383,7 +1383,7 @@ void BaseTestDefinition :: Process()
     const PtrList<char>& groups = suite.getGroupSet();
 
     PRBool match = PR_FALSE;
-    PtrList<char> grouplist;    // list of groups supported by this test
+    PtrList<const char> grouplist;    // list of groups supported by this test
     PtrList<char> platformlist; // list of platforms supported by this  test
     enabled = PR_FALSE;
 
@@ -1492,7 +1492,7 @@ void BaseTestDefinition :: Process()
             // now check if this test belongs to one of the enabled groups
             for (unsigned int testgroup=0;testgroup<grouplist.entries() && PR_FALSE == enabled;testgroup++)
             {
-                char* thistestgroup = grouplist.at(testgroup);
+		const char* thistestgroup = grouplist.at(testgroup);
                 for (unsigned int enabledgroup=0; enabledgroup<groups.entries() && PR_FALSE == enabled;enabledgroup++)
                 {
                     char* thisenabledgroup = groups.at(enabledgroup);

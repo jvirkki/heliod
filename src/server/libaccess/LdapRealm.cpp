@@ -210,7 +210,7 @@ void LdapRealm::addServer(const char *url)
     return;
   }
   char* _hostname = ludp->lud_host ? strdup(ludp->lud_host) : 0;
-  int   _ldapOverSSL = ludp->lud_options & LDAP_URL_OPT_SECURE;
+  int   _ldapOverSSL = (ludp->lud_options & LDAP_URL_OPT_SECURE);
   int   _port     = ludp->lud_port ? ludp->lud_port : _ldapOverSSL ? 636 : 389;
   char* _baseDN   = ludp->lud_dn ? strdup(ludp->lud_dn) : 0;
   ldap_free_urldesc(ludp);

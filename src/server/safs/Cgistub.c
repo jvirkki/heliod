@@ -1513,6 +1513,28 @@ cleanup_environment(void)
     }
 #endif
 
+#if defined(Linux) || defined(LINUX)
+  if (!closed) {
+    /*
+     *  close_range() closes an entire fd range in a single syscall.
+     *  This avoids looping over every possible fd one at a time up to
+     *  _SC_OPEN_MAX, which is extremely slow (and can take tens of
+     *  seconds, causing our parent to give up on us) when the inherited
+     *  RLIMIT_NOFILE is large (e.g. startserv raises it to 65536).
+     *  Available since Linux 5.9 / glibc 2.34; if unsupported at
+     *  runtime (ENOSYS on an older kernel), fall through to the loop.
+     *
+     *  Declared explicitly (rather than relying on _GNU_SOURCE +
+     *  <unistd.h>) since this file is built via its own Makefile.cgistub
+     *  which doesn't define _GNU_SOURCE.
+     */
+    extern int close_range(unsigned int first, unsigned int last, int flags);
+    if (close_range(STDERR_FILENO+1, ~0U, 0) == 0) {
+        closed = 1;
+    }
+  }
+#endif
+
   if (!closed) {
     int     fd;
     int     fdlimit;

@@ -44,6 +44,8 @@
 #include "netsite.h"
 #ifdef Linux
 #include <sys/ioctl.h>
+#else
+extern "C" int ioctl(int, int, ...);
 #endif
 
 #include <frame/conf.h>
@@ -599,6 +601,7 @@ NSAPI_PUBLIC void net_inet_ntoa(struct in_addr ipaddr, char * strIp )
 
 #ifdef XP_UNIX
 #include <sys/param.h>
+
 #else /* WIN32 */
 #define MAXHOSTNAMELEN 255
 #endif /* XP_UNIX */

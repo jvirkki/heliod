@@ -580,17 +580,17 @@ ldapdn_substr_normalize( char *dn, char *end, int *nRDNs )
 		    d--;
                 if ( value_separator == dn ) { /* 2 or more separators */
 		    /* convert to quoted value: */
-		    auto char *L = NULL;
-		    auto char *R;
+		    char *L = NULL;
+		    char *R;
 		    for ( R = value; (R = strchr( R, '\\' )) && (R < d); L = ++R ) {
 			if ( SEPARATOR( R[1] )) {
 			    if ( L == NULL ) {
-				auto const size_t len = R - value;
+				const size_t len = R - value;
 				if ( len > 0 ) memmove( value+1, value, len );
 				*value = '"'; /* opening quote */
 				value = R + 1;
 			    } else {
-				auto const size_t len = R - L;
+				const size_t len = R - L;
 				if ( len > 0 ) {
 				memmove( value, L, len );
 				value += len;
@@ -687,9 +687,9 @@ ldapdn_substr_normalize( char *dn, char *end, int *nRDNs )
         } else {
             gotesc = 1;
             if ( s+2 < end ) {
-                auto int n = hexchar2int( s[1] );
+                int n = hexchar2int( s[1] );
                 if ( n >= 0 ) {
-		    auto int n2 = hexchar2int( s[2] );
+		    int n2 = hexchar2int( s[2] );
 		    if ( n2 >= 0 ) {
 			n = (n << 4) + n2;
 			if (n == 0) { /* don't change \00 */
@@ -932,11 +932,11 @@ NSAPI_PUBLIC void *
 ldapu_list_empty (LDAPUList_t *list, LDAPUListNodeFn_t free_fn, void *arg)
 {
     if (list) {
-	auto LDAPUListNode_t *node = list->head;
+	LDAPUListNode_t *node = list->head;
 	while (node) {
-	    auto LDAPUListNode_t *next = node->next;
+	    LDAPUListNode_t *next = node->next;
 	    if (free_fn) {
-		auto void *rv = (*free_fn)(node->info, arg);
+		void *rv = (*free_fn)(node->info, arg);
 		if (rv) {
 		    list->head = node;
 		    node->prev = 0;

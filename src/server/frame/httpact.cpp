@@ -193,6 +193,9 @@ static inline int add_objects(Session *sn, Request *rq, httpd_objset *os, char *
 
 NSAPI_PUBLIC int servact_uri2path(Session *sn, Request *rq)
 {
+    if (!rq)
+        return REQ_ABORTED;
+
     httpd_objset *os = NULL;
     if (((NSAPIRequest*)rq)->hrq) {
         os = ((NSAPIRequest*)rq)->hrq->getObjset();
@@ -2000,6 +2003,9 @@ NSAPI_PUBLIC int servact_output(Session *sn, Request *rq)
 
 NSAPI_PUBLIC int servact_lookup(Session *sn, Request *rq)
 {
+    if (!rq)
+        return REQ_ABORTED;
+
     int rv;
 
     do {

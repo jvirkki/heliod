@@ -31,13 +31,29 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+DYNAMIC_LIB_SUFFIX_SAFE = so
+DYNAMIC_LIB_SUFFIX = so
+SO_EXT = .so
+DLL_EXT = .so
+
 # The libsi18n library support for getting strings from the
 # string database.
 
 BUILD_ROOT=../../..
 USE_NSPR=1
-MODULE=libsi18n
+MODULE=si18n
+AR_EXT=.a
+LIB_EXT=.a
+DLL_EXT=.so
+SO_EXT=.so
+override DYNAMIC_LIB_SUFFIX_SAFE = so
+override DYNAMIC_LIB_SUFFIX = so
+override CFLAGS += -fPIC
+override CXXFLAGS += -fPIC
 include ${BUILD_ROOT}/make/base.mk
+LOCAL_CFLAGS += -fPIC
+LOCAL_CPPFLAGS += -fPIC
+LOCAL_CXXFLAGS += -fPIC
 
 LD_LIB_PATH=../../support/libdbm/$(OBJDIR):$(NSPR_LIBDIR)
 

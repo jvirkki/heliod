@@ -360,9 +360,9 @@ NSAPI_PUBLIC int ldapu_get_cert_ava_val (void *cert_in, int which_dn,
 static void
 _rdns_free (char*** rdns)
 {
-    auto char*** rdn;
+    char*** rdn;
     for (rdn = rdns; *rdn; ++rdn) {
-	ldap_value_free (*rdn);
+	ldapu_value_free (NULL, *rdn);
     }
     free (rdns);
 }
@@ -370,25 +370,25 @@ _rdns_free (char*** rdns)
 static char***
 _explode_dn (const char* dn)
 {
-    auto char*** exp = NULL;
+    char*** exp = NULL;
     if (dn && *dn) {
-	auto char** rdns = ldap_explode_dn (dn, 0);
+	char** rdns = ldap_explode_dn (dn, 0);
 	if (rdns) {
-	    auto size_t expLen = 0;
-	    auto char** rdn;
+	    size_t expLen = 0;
+	    char** rdn;
 	    for (rdn = rdns; *rdn; ++rdn) {
-		auto char** avas = ldap_explode_rdn (*rdn, 0);
+		char** avas = ldap_explode_rdn (*rdn, 0);
 		if (avas && *avas) {
 		    exp = (char***) ldapu_realloc (exp, sizeof(char**) * (expLen + 2));
 		    if (exp) {
 			exp[expLen++] = avas;
 		    } else {
-			ldap_value_free (avas);
+			ldapu_value_free (NULL, avas);
 			break;
 		    }
 		} else { /* parse error */
 		    if (avas) {
-			ldap_value_free (avas);
+			ldapu_value_free (NULL, avas);
 		    }
 		    if (exp) {
 			exp[expLen] = NULL;
@@ -401,7 +401,7 @@ _explode_dn (const char* dn)
 	    if (exp) {
 		exp[expLen] = NULL;
 	    }
-	    ldap_value_free (rdns);
+	    ldapu_value_free (NULL, rdns);
 	}
     }
     return exp;
@@ -410,10 +410,10 @@ _explode_dn (const char* dn)
 static size_t
 _rdns_count (char*** rdns)
 {
-    auto size_t count = 0;
-    auto char*** rdn;
+    size_t count = 0;
+    char*** rdn;
     for (rdn = rdns; *rdns; ++rdns) {
-	auto char** ava;
+	char** ava;
 	for (ava = *rdns; *ava; ++ava) {
 	    ++count;
 	}
@@ -436,7 +436,7 @@ _replaceAVA (char* attr, char** avas)
 }
 
 struct _attr_getter_pair {
-    char* (*getter) (CERTName* dn);
+    char* (*getter) (const CERTName* dn);
     const char* name1;
     const char* name2;
 } _attr_getter_table[] =
@@ -457,7 +457,7 @@ struct _attr_getter_pair {
 static int
 _is_OU (const char* attr)
 {
-    auto struct _attr_getter_pair* descAttr;
+    struct _attr_getter_pair* descAttr;
     for (descAttr = _attr_getter_table; descAttr->name1; ++descAttr) {
 	if (descAttr->getter == NULL) { /* OU attribute */
 	    if (!ldapu_strcasecmp (attr, descAttr->name1) || (descAttr->name2 &&
@@ -488,8 +488,8 @@ _value_normalize (char* value)
        change consecutive spaces to a single space.
     */
 {
-    auto char* t;
-    auto char* f;
+    char* t;
+    char* f;
     t = f = value;
     while (*f == ' ') ++f; /* ignore leading spaces */
     for (; *f; ++f) {
@@ -511,13 +511,13 @@ _explode_AVA (char* AVA)
        both normalized.
      */
 {
-    auto char* value = strchr (AVA, '=');
+    char* value = strchr (AVA, '=');
     if (!value) return LDAPU_FAILED;
     *value++ = '\0';
     _value_normalize (AVA);
     _value_normalize (value);
     {
-	auto char* typeEnd = AVA + strlen (AVA);
+	char* typeEnd = AVA + strlen (AVA);
 	if ((typeEnd + 1) != value) {
 	    memmove (typeEnd+1, value, strlen(value)+1);
 	}
@@ -534,7 +534,7 @@ _AVA_value (char* AVA)
 static int
 _value_match (char* value, char* desc)
 {
-    auto const int result =
+    const int result =
       !ldapu_strcasecmp (_value_normalize(value), desc);
     return result;
 }
@@ -548,23 +548,23 @@ ldapu_member_certificate_match (void* cert, const char* desc)
  *	    <rv>		Something went wrong.
  */
 {
-    auto int err = LDAPU_FAILED;
-    auto char*** descRDNs;
+    int err = LDAPU_FAILED;
+    char*** descRDNs;
     if (!cert || !desc || desc[0] != '{') return LDAPU_FAILED;
     if (desc[1] == '\0') return LDAPU_SUCCESS; /* no AVAs */
     descRDNs = _explode_dn (desc+1);
     if (descRDNs) {
-	auto char** descAVAs = (char**)ldapu_malloc(sizeof(char*) * (_rdns_count(descRDNs)+1));
+	char** descAVAs = (char**)ldapu_malloc(sizeof(char*) * (_rdns_count(descRDNs)+1));
 	if (!descAVAs) {
 	    err = LDAPU_ERR_OUT_OF_MEMORY;
 	} else {
-	    auto CERTName* subject = &(((CERTCertificate*)cert)->subject);
-	    auto char** descAVA;
+	    CERTName* subject = &(((CERTCertificate*)cert)->subject);
+	    char** descAVA;
 
 	    err = LDAPU_SUCCESS;
 	    { /* extract all the AVAs, but not duplicate types, except OU */
-		auto size_t descAVAsLen = 0;
-		auto char*** descRDN;
+		size_t descAVAsLen = 0;
+		char*** descRDN;
 		descAVAs[0] = NULL;
 		for (descRDN = descRDNs; err == LDAPU_SUCCESS && *descRDN; ++descRDN) {
 		    for (descAVA = *descRDN; err == LDAPU_SUCCESS && *descAVA; ++descAVA) {
@@ -582,7 +582,7 @@ ldapu_member_certificate_match (void* cert, const char* desc)
 
 	    /* match all the attributes except OU */
 	    for (descAVA = descAVAs; err == LDAPU_SUCCESS && *descAVA; ++descAVA) {
-		auto struct _attr_getter_pair* descAttr;
+		struct _attr_getter_pair* descAttr;
 		err = LDAPU_FAILED; /* if no match */
 		for (descAttr = _attr_getter_table; descAttr->name1; ++descAttr) {
 		    if (!ldapu_strcasecmp (*descAVA, descAttr->name1) || (descAttr->name2 &&
@@ -590,7 +590,7 @@ ldapu_member_certificate_match (void* cert, const char* desc)
 			if (descAttr->getter == NULL) { /* OU attribute */
 			    err = LDAPU_SUCCESS; /* for now */
 			} else {
-			    auto char* certVal = (*(descAttr->getter))(subject);
+			    char* certVal = (*(descAttr->getter))(subject);
 			    if (certVal && _value_match (certVal, _AVA_value (*descAVA))) {
 				err = LDAPU_SUCCESS;
 			    }
@@ -604,17 +604,17 @@ ldapu_member_certificate_match (void* cert, const char* desc)
 	    /* match the OU attributes */
 	    if (err == LDAPU_SUCCESS && descAVA != descAVAs) {
 		/* Iterate over the OUs in the certificate subject */
-		auto CERTRDN** certRDN = subject->rdns;
+		CERTRDN** certRDN = subject->rdns;
 		descAVA = _previous_OU (descAVA, descAVAs);
 		for (; descAVA && *certRDN; ++certRDN) {
-		    auto CERTAVA** certAVA = (*certRDN)->avas;
+		    CERTAVA** certAVA = (*certRDN)->avas;
 		    for (; descAVA && *certAVA; ++certAVA) {
-			auto const int tag = CERT_GetAVATag (*certAVA);
+			const int tag = CERT_GetAVATag (*certAVA);
 			if (tag == SEC_OID_AVA_ORGANIZATIONAL_UNIT_NAME) {
-			    auto const size_t certValLen =(*certAVA)->value.len;
-			    auto const size_t lenLen = (certValLen < 128) ? 2 : 3;
-			    auto const size_t buflen = certValLen - lenLen;
-			    auto char* buf = (char*)ldapu_malloc(buflen+1);
+			    const size_t certValLen =(*certAVA)->value.len;
+			    const size_t lenLen = (certValLen < 128) ? 2 : 3;
+			    const size_t buflen = certValLen - lenLen;
+			    char* buf = (char*)ldapu_malloc(buflen+1);
 			    if (!buf) {
 				err = LDAPU_ERR_OUT_OF_MEMORY;
 				descAVA = NULL;

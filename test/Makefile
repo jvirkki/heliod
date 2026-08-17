@@ -50,6 +50,7 @@ tests:
 	cd $(WORK_ROOT) && \
 	./bin/post-install && \
 	./bin/create-instance -hostname localhost -user $(USER) -port 8188 && \
+	ulimit -n 4096 && \
 	./https-localhost/bin/startserv && \
 	curl -s http://localhost:8188 | grep Welcome && \
 	./https-localhost/bin/stopserv && \

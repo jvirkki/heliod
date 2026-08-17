@@ -39,6 +39,7 @@
 
 #include "private/pprio.h"
 #include "ssl.h"
+#include <nss.h>
 
 #include "netsite.h"
 #include "base/util.h"
@@ -1390,8 +1391,20 @@ NSAPI_PUBLIC PRStatus filter_init(void)
     // Figure out the NSS IO layer identity
     PRFileDesc *model = PR_NewTCPSocket();
     if (model) {
-        model = SSL_ImportFD(NULL, model);
-        _filter_ssl_identity = model->identity;
+        if (NSS_IsInitialized()) {
+            PRFileDesc *ssl = SSL_ImportFD(NULL, model);
+            if (ssl) {
+                _filter_ssl_identity = ssl->identity;
+                PR_Close(ssl);
+            } else {
+                _filter_ssl_identity = PR_INVALID_IO_LAYER;
+            }
+        } else {
+            // NSS is not initialized yet.  Calling SSL_ImportFD here would
+            // return NULL and leave NSS in an inconsistent state that causes
+            // NSS_SetDomesticPolicy() to fail later.
+            _filter_ssl_identity = PR_INVALID_IO_LAYER;
+        }
         PR_Close(model);
     }
 

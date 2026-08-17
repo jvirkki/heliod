@@ -33,13 +33,15 @@
 
 /* -*- Mode: C; tab-width: 4 -*-
    xp_time.c --- parsing dates and timzones and stuff
-   Copyright © 1995, 1996 Netscape Communications Corporation, all rights reserved.
+   Copyright ï¿½ 1995, 1996 Netscape Communications Corporation, all rights reserved.
    Created: Jamie Zawinski <jwz@netscape.com>, 3-Aug-95
  */
 
 #include "nspr.h"
 #include "nstime.h"
 #include <string.h>
+#include <time.h>
+
 /* Returns the number of minutes difference between the local time and GMT.
    This takes into effect daylight savings time.  This is the value that
    should show up in outgoing mail headers, etc.

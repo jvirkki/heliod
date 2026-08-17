@@ -84,7 +84,7 @@ NSAPI_PUBLIC shmem_s *shmem_alloc(char *name, int size, int expose)
     PR_Seek(ret->fd, 0, PR_SEEK_SET);
 #endif /* NS_OLDES3X */
     if( (ret->data = (char *)mmap(NULL, size, PROT_READ | PROT_WRITE,
-                          SHMEM_MMAP_FLAGS, PR_FileDesc2NativeHandle(ret->fd), 0)) == (caddr_t) -1)
+                          MAP_SHARED, PR_FileDesc2NativeHandle(ret->fd), 0)) == (caddr_t) -1)
     {
         NsprError::mapUnixErrno();
         PR_Close(ret->fd);

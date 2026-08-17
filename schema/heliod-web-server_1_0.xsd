@@ -1872,6 +1872,77 @@
   </xs:all>
 </xs:complexType>
 
+<xs:complexType name="reverse-proxyType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          Whether this virtual server overrides the global ReverseProxy*
+          magnus.conf settings. Has no effect unless the &lt;reverse-proxy>
+          element itself is present (see the implicit default below).
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="ip-header" type="xs:string" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          Name of the HTTP request header a trusted reverse proxy uses to
+          convey the original client IP (e.g. "X-Forwarded-For"). If empty,
+          the global ReverseProxyIPHeader magnus.conf directive is used.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="log-attribution" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          Which IP(s) perfdump and the errors log show for this virtual
+          server when both the actual and the trusted-proxy-forwarded IP
+          are known: "actual" (only the real TCP peer IP), "proxied-ip"
+          (only the resolved/reported IP, falling back to the actual IP if
+          unresolved), or "both" (both, e.g. errors log lines read
+          "&lt;actual-ip&gt; (reported: &lt;reported-ip&gt;)"). If empty,
+          the global ReverseProxyLogAttribution magnus.conf directive is
+          used.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit/>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value=""/>
+          <xs:enumeration value="actual"/>
+          <xs:enumeration value="proxied-ip"/>
+          <xs:enumeration value="both"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+
+    <xs:element name="trusted-ip" minOccurs="0" maxOccurs="unbounded">
+      <xs:annotation>
+        <xs:documentation>
+          An IPv4 or IPv6 address or CIDR network (e.g. "10.0.0.0/8") that is
+          trusted, in addition to the global ReverseProxyTrustedIPs list, to
+          supply ip-header for this virtual server.
+        </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:minLength value="1"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
+  </xs:choice>
+</xs:complexType>
+
 <xs:complexType name="jvmType">
   <xs:choice minOccurs="0" maxOccurs="unbounded">
     <xs:element name="enabled" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
@@ -3114,6 +3185,24 @@
       <xs:annotation>
         <xs:documentation>
           If the &lt;qos-limits> element is omitted, no QOS limits are enforced.
+        </xs:documentation>
+        <xs:appinfo>
+          <appinfo:implicit>
+            <enabled>false</enabled>
+          </appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="reverse-proxy" type="reverse-proxyType" minOccurs="0" maxOccurs="1">
+      <xs:annotation>
+        <xs:documentation>
+          Controls whether perfdump and the errors log report the actual TCP
+          peer IP or a reverse-proxy-forwarded client IP for requests to this
+          virtual server. If the &lt;reverse-proxy> element is omitted, this
+          virtual server uses the global ReverseProxyIPHeader,
+          ReverseProxyTrustedIPs, and ReverseProxyLogAttribution magnus.conf
+          settings unmodified.
         </xs:documentation>
         <xs:appinfo>
           <appinfo:implicit>

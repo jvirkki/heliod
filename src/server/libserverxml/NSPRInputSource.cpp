@@ -47,6 +47,8 @@ using namespace XERCES_CPP_NAMESPACE;
 
 class NSPRBinInputStream : public BinInputStream {
 public:
+    virtual const XMLCh* getContentType() const { return 0; }
+public:
     NSPRBinInputStream(PRFileDesc *fd)
     : fd(fd)
     { }
@@ -56,7 +58,7 @@ public:
         PR_Close(fd);
     }
 
-    unsigned int curPos() const
+    XMLFilePos curPos() const
     {
         PRInt32 rv = PR_Seek(fd, 0, PR_SEEK_CUR);
         if (rv == -1)
@@ -64,7 +66,7 @@ public:
         return rv;
     }
 
-    unsigned int readBytes(XMLByte *const toFill, const unsigned int maxToRead)
+    XMLSize_t readBytes(XMLByte* const toFill, const XMLSize_t maxToRead)
     {
         PRInt32 rv = PR_Read(fd, toFill, maxToRead);
         if (rv == -1)

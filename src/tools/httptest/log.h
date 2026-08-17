@@ -48,7 +48,7 @@ class __EXPORT Logger
 {
 public:
     Logger() {};
-    static void logError(LogLevel level, char *fmt, ...);
+    static void logError(LogLevel level, const char* fmt, ...);
     static void logInitialize(LogLevel level);
     static void setThreadName(char *name);
 

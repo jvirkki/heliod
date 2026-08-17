@@ -42,10 +42,13 @@
 #include "base/dll.h"
 #include "base/ereport.h"
 #include "base/platform.h"
+#include <unistd.h>
 #include "httpdaemon/JavaConfig.h"
 
 using namespace XERCES_CPP_NAMESPACE;
 using namespace XALAN_CPP_NAMESPACE;
+
+extern const char *dll_library(void);
 
 static void usage()
 {
@@ -71,6 +74,20 @@ static const char *getJvmLibpath(const ServerXMLSchema::Server& server)
     return "";
 }
 
+
+static const char *getSelfExePath(void)
+{
+#if defined(Linux) || defined(LINUX)
+    static char path[4096];
+    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (len > 0) {
+        path[len] = '\0';
+        return path;
+    }
+#endif
+    return dll_library();
+}
+
 static void set64bitPlatform(const char *platform)
 {
     if (!platform || !strcmp(platform, "32"))
@@ -78,7 +95,7 @@ static void set64bitPlatform(const char *platform)
 
     // Construct the path to the platform/true binary
     NSString path;
-    const char *library = dll_library();
+    const char *library = getSelfExePath();
     const char *slash = strrchr(library, '/');
 #ifdef XP_WIN32
     const char *backslash = strrchr(library, '\\');

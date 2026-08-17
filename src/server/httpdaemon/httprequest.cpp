@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <nss.h>
 
+#include "netsite.h"
 #include "httpdaemon/httprequest.h"
 #include "httpdaemon/daemonsession.h"
 #include "httpdaemon/HttpMethodRegistry.h"
@@ -249,6 +250,7 @@ HttpRequest::HttpRequest (DaemonSession *_pSession)
     currRecursionDepth = 0;
     memset((void *)&rqSn, 0, sizeof(NSAPISession));
     memset((void *)&rqRq, 0, sizeof(NSAPIRequest));
+    fReportedClientIPResolved = PR_FALSE;
 
     // initialize header to pb_key mappings (only needs to be done once)
     for (int i = 0; i < NSHttpHeaderMax; i++) {
@@ -400,6 +402,9 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
         PR_ASSERT(vs);
         PR_ASSERT(serverHostname);
 
+        // GetReportedClientIP()'s cache is only valid for a single request
+        fReportedClientIPResolved = PR_FALSE;
+
         // Get updated settings from the current configuration
         const Configuration *configuration = vs->getConfiguration();
         if (configuration->getID() != idConfiguration) {
@@ -424,6 +429,23 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
             break;
         }
 
+        // Resolve this request's reverse-proxy-reported client IP, if any,
+        // and reflect it in the realtime perfdump thread stats. Only
+        // populated when it actually differs from the socket peer address
+        // (i.e. the feature is enabled, the peer is trusted, and the
+        // configured header carried a valid address).
+        {
+            const char *reportedIP = GetReportedClientIP();
+            PRNetAddr reportedAddr;
+            memset(&reportedAddr, 0, sizeof(reportedAddr));
+            if (strcmp(reportedIP, pSession->GetClientIP()) != 0 &&
+                PR_StringToNetAddr(reportedIP, &reportedAddr) == PR_SUCCESS) {
+                pSession->updateReportedClient(&reportedAddr);
+            } else {
+                pSession->updateReportedClient(NULL);
+            }
+        }
+
         // We only honour requests for known methods
         if (rqHdr->GetMethodNumber() == -1) {
             if (!iStatus) {
@@ -431,7 +453,7 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
                         "Rejecting %.*s request from %s (Method not implemented)",
                         rqHdr->GetMethod().len,
                         rqHdr->GetMethod().ptr,
-                        pSession->GetClientIP());
+                        GetLoggedClientIP());
                 iStatus = PROTOCOL_NOT_IMPLEMENTED;
             }
         }
@@ -442,7 +464,7 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
             if (!iStatus) {
                 ereport(LOG_VERBOSE,
                         "Received malformed request from %s (%d byte URI)",
-                        pSession->GetClientIP(),
+                        GetLoggedClientIP(),
                         hsAbsPath.len);
                 iStatus = PROTOCOL_URI_TOO_LARGE;
             }
@@ -465,7 +487,7 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
             if (!iStatus) {
                 ereport(LOG_VERBOSE,
                         "Received malformed request from %s (missing Host: header)",
-                        pSession->GetClientIP());
+                        GetLoggedClientIP());
                 iStatus = PROTOCOL_BAD_REQUEST;
             }
         }
@@ -498,7 +520,7 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
                 ereport(LOG_VERBOSE,
                         "Received request for disabled virtual server %s from %s",
                         vs->name.getStringValue(),
-                        pSession->GetClientIP());
+                        GetLoggedClientIP());
                 iStatus = PROTOCOL_NOT_FOUND;
             }
         }
@@ -693,9 +715,189 @@ void HttpRequest::processQOS()
     pblock_nninsert("server_connections_enforced", (serverMaxConnections != PR_INT32_MAX), rqRq.rq.vars);
 }
 
+//-----------------------------------------------------------------------------
+// findRequestHeaderFirst
+//
+// Returns the first HHHeader entry (of possibly several with the same tag)
+// with the given name (case-insensitive), or NULL if not present. name is
+// assumed to not be a "well-known" NSHttpHeader, so we can't use rqHdr's
+// GetXxx() accessors; scan the raw header list instead.
+//-----------------------------------------------------------------------------
+
+static const HHHeader *findRequestHeaderFirst(const HttpHeader *hdr, const char *name)
+{
+    if (!hdr || !name || !*name)
+        return NULL;
+
+    int nameLen = strlen(name);
+    for (int i = 0; ; i++) {
+        const HHHeader *hh = hdr->GetHeader(i);
+        if (!hh)
+            break;
+        if (hh->tag.len == nameLen && !strncasecmp(hh->tag.ptr, name, nameLen))
+            return hh;
+    }
+
+    return NULL;
+}
+
+//-----------------------------------------------------------------------------
+// concatRequestHeaderValues
+//
+// Concatenates the values of hh and any other instances of the same
+// (possibly repeated) request header, comma-separated, into out. Returns
+// PR_TRUE if anything was written.
+//-----------------------------------------------------------------------------
+
+static PRBool concatRequestHeaderValues(const HttpHeader *hdr, const HHHeader *hh, char *out, int outSize)
+{
+    int pos = 0;
+
+    while (hh && pos < outSize - 1) {
+        int copyLen = hh->val.len;
+        if (copyLen > outSize - 1 - pos)
+            copyLen = outSize - 1 - pos;
+        if (copyLen > 0) {
+            memcpy(out + pos, hh->val.ptr, copyLen);
+            pos += copyLen;
+        }
+
+        if (hh->next < 0)
+            break;
+        hh = hdr->GetHeader(hh->next);
+        if (hh && pos < outSize - 2) {
+            out[pos++] = ',';
+            out[pos++] = ' ';
+        }
+    }
+
+    out[pos] = '\0';
+    return pos > 0;
+}
+
+//-----------------------------------------------------------------------------
+// resolveReportedClientIP
+//
+// Given the (possibly comma-separated, e.g. X-Forwarded-For-style) value of
+// a trusted reverse proxy's client IP header, walks the chain from right to
+// left and copies into out the first hop (from the right) that isn't itself
+// a trusted proxy -- our best guess at the actual client. If every hop is
+// trusted, copies the leftmost (presumably original client) hop into out
+// instead. Returns PR_FALSE, leaving out untouched, if no hop parses as a
+// valid IP address.
+//-----------------------------------------------------------------------------
+
+static PRBool resolveReportedClientIP(const char *headerValue,
+                                      const TrustedProxyList &trusted,
+                                      char *out, int outSize)
+{
+    char *copy = PERM_STRDUP(headerValue);
+    if (!copy)
+        return PR_FALSE;
+
+    enum { MAX_HOPS = 64 };
+    char *hops[MAX_HOPS];
+    int nHops = 0;
+
+    char *lasts = NULL;
+    char *tok = util_strtok(copy, ",", &lasts);
+    while (tok && nHops < MAX_HOPS) {
+        while (*tok == ' ' || *tok == '\t')
+            tok++;
+        char *end = tok + strlen(tok);
+        while (end > tok && (end[-1] == ' ' || end[-1] == '\t'))
+            *--end = '\0';
+        if (*tok)
+            hops[nHops++] = tok;
+        tok = util_strtok(NULL, ",", &lasts);
+    }
+
+    PRBool found = PR_FALSE;
+
+    for (int i = nHops - 1; i >= 0; i--) {
+        PRNetAddr addr;
+        memset(&addr, 0, sizeof(addr));
+        if (PR_StringToNetAddr(hops[i], &addr) != PR_SUCCESS)
+            break; // malformed hop; don't trust anything past this point
+
+        if (i == 0 || !trusted.contains(&addr)) {
+            util_snprintf(out, outSize, "%s", hops[i]);
+            found = PR_TRUE;
+            break;
+        }
+    }
+
+    PERM_FREE(copy);
+    return found;
+}
+
+//-----------------------------------------------------------------------------
+// HttpRequest::GetReportedClientIP
+//-----------------------------------------------------------------------------
+
+const char* HttpRequest::GetReportedClientIP()
+{
+    if (fReportedClientIPResolved)
+        return reportedClientIP;
+
+    fReportedClientIPResolved = PR_TRUE;
+
+    const ReverseProxyConfig& cfg = vs ? vs->getReverseProxyConfig()
+                                       : ReverseProxyConfig_GetGlobal();
+
+    if (cfg.isEnabled() && rqHdr &&
+        cfg.getTrustedIPs().contains(pSession->GetRemoteAddress()))
+    {
+        const HHHeader *hh = findRequestHeaderFirst(rqHdr, cfg.getIPHeader());
+        if (hh) {
+            char headerValue[1024];
+            if (concatRequestHeaderValues(rqHdr, hh, headerValue, sizeof(headerValue)) &&
+                resolveReportedClientIP(headerValue, cfg.getTrustedIPs(),
+                                        reportedClientIP, sizeof(reportedClientIP)))
+            {
+                return reportedClientIP;
+            }
+        }
+    }
+
+    util_snprintf(reportedClientIP, sizeof(reportedClientIP), "%s",
+                  pSession->GetClientIP());
+    return reportedClientIP;
+}
+
+//-----------------------------------------------------------------------------
+// HttpRequest::GetLoggedClientIP
+//-----------------------------------------------------------------------------
+
+const char* HttpRequest::GetLoggedClientIP()
+{
+    const ReverseProxyConfig& cfg = vs ? vs->getReverseProxyConfig()
+                                       : ReverseProxyConfig_GetGlobal();
+
+    switch (cfg.getLogAttribution()) {
+    case REVERSE_PROXY_LOG_ATTRIBUTION_PROXIED_IP:
+        return GetReportedClientIP();
+
+    case REVERSE_PROXY_LOG_ATTRIBUTION_BOTH:
+        // Always include both values, even if GetReportedClientIP() fell
+        // back to the actual IP, so the format is stable for log scrapers.
+        util_snprintf(loggedClientIPBoth, sizeof(loggedClientIPBoth),
+                      "%s (reported: %s)", pSession->GetClientIP(),
+                      GetReportedClientIP());
+        return loggedClientIPBoth;
+
+    default:
+        return pSession->GetClientIP();
+    }
+}
+
 void HttpRequest::UnacceleratedRespond()
 {
     const char *clientIP = pSession->GetClientIP();
+
+    // For log messages only (never for ACLs/session data, which must always
+    // use the actual TCP peer address above).
+    const char *loggedClientIP = GetLoggedClientIP();
 
     /*
      * Initialize request-specific NSAPI Session data.
@@ -750,7 +952,7 @@ void HttpRequest::UnacceleratedRespond()
         if (!iStatus) {
             ereport(LOG_VERBOSE,
                     "Error receiving client certificate from %s",
-                    clientIP);
+                    loggedClientIP);
             iStatus = PROTOCOL_FORBIDDEN;
         }
     }
@@ -798,7 +1000,7 @@ void HttpRequest::UnacceleratedRespond()
                 if (!iStatus) {
                     ereport(LOG_VERBOSE,
                             "Received malformed request from %s (URI points outside document root)",
-                            clientIP);
+                            loggedClientIP);
                     iStatus = PROTOCOL_FORBIDDEN;
                 }
             }
@@ -824,7 +1026,7 @@ void HttpRequest::UnacceleratedRespond()
             if (!iStatus) {
                 ereport(LOG_VERBOSE,
                         "Received malformed request from %s (invalid URI encoding)",
-                        clientIP);
+                        loggedClientIP);
                 iStatus = PROTOCOL_BAD_REQUEST;
             }
         }
@@ -837,7 +1039,7 @@ void HttpRequest::UnacceleratedRespond()
         if (!iStatus) {
             ereport(LOG_VERBOSE,
                     "Received malformed request from %s (invalid URI)",
-                    clientIP);
+                    loggedClientIP);
             iStatus = PROTOCOL_FORBIDDEN;
         }
         pblock_kvinsert(pb_key_uri, "/", 1, rqRq.rq.reqpb);
@@ -849,7 +1051,7 @@ void HttpRequest::UnacceleratedRespond()
         if (!iStatus) {
             ereport(LOG_VERBOSE,
                     "Received malformed request from %s (invalid header field)",
-                    clientIP);
+                    loggedClientIP);
             iStatus = PROTOCOL_BAD_REQUEST;
         }
     }
@@ -887,7 +1089,7 @@ void HttpRequest::UnacceleratedRespond()
         url.printf(":%d/", lsc->port.getInt32Value());
 
         if (fLogFinest)
-            ereport(LOG_FINEST, "Redirecting %s to %s using NSAPI", clientIP, url.data());
+            ereport(LOG_FINEST, "Redirecting %s to %s using NSAPI", loggedClientIP, url.data());
 
         /* Redirect to SSL listener */
         servact_error_processed(&rqSn.sn, &rqRq.rq, PROTOCOL_REDIRECT, NULL, url);
@@ -896,14 +1098,14 @@ void HttpRequest::UnacceleratedRespond()
 
     } else if (iStatus) {
         if (fLogFinest)
-            ereport(LOG_FINEST, "Processing %d error for %s using NSAPI", iStatus, clientIP);
+            ereport(LOG_FINEST, "Processing %d error for %s using NSAPI", iStatus, loggedClientIP);
 
         /* Handle error response */
         servact_error_processed(&rqSn.sn, &rqRq.rq, iStatus, NULL, NULL);
 
     } else {
         if (fLogFinest)
-            ereport(LOG_FINEST, "Processing %s for %s using NSAPI", absPath, clientIP);
+            ereport(LOG_FINEST, "Processing %s for %s using NSAPI", absPath, loggedClientIP);
 
         /* We'd like to store the result in the accelerator cache */
         if (fAcceleratable)

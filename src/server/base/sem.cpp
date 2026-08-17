@@ -52,6 +52,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #if !defined (MAXPATHLEN)
 #define	MAXPATHLEN	1024
@@ -116,23 +117,19 @@ Sem_grab (SEMAPHORE id)
         return -1;
     }
 
-#ifdef THREAD_NSPR_USER
-    /* Poll to avoid blocking. XXXrobm If errno is wrong this may go awry. */
-    while (lockf (id, F_TLOCK) < 0)
-        systhread_sleep (1000);
-#else
-    // ruslan: actually check if the call was interrupted
-    int rv;
-    do	{
-        rv = lockf (id, F_LOCK, 0);
-    }
-    while (rv == -1 && errno == EINTR);
-
-    if (rv == -1)
+    for (;;) {
+        int rv = lockf(id, F_TLOCK, 0);
+        if (rv == 0)
+            return 0;
+        if (errno == EINTR)
+            continue;
+        if (errno == EAGAIN || errno == EACCES) {
+            systhread_sleep(1000);
+            continue;
+        }
         NsprError::mapUnixErrno();
-
-    return rv;
-#endif
+        return -1;
+    }
 }
 
 int
@@ -143,7 +140,7 @@ Sem_tgrab(SEMAPHORE id)
         return -1;
     }
 
-    int rv = (id, F_TLOCK, 0);
+    int rv = lockf(id, F_TLOCK, 0);
     if (rv == -1)
         NsprError::mapUnixErrno();
 
@@ -239,7 +236,7 @@ NSAPI_PUBLIC SEMAPHORE Sem_init (char *name, int number)
     char tn[256];
     int value = number;
 
-#ifdef HPUX
+#if defined(HPUX) || defined(Linux) || defined(LINUX)
     util_sprintf(tn, "/tmp/%s.%d", name, number);
     value = 1;
 #else
@@ -301,6 +298,4 @@ NSAPI_PUBLIC void Sem_terminate (SEMAPHORE id)
         sem_close (sp);
 }
 
-#else
-#error "undefined semaphore type"
 #endif

@@ -32,6 +32,7 @@
 #
 
 BUILD_ROOT=../../..
+
 USE_NSPR=1
 USE_XERCESC=1
 USE_XALANC=1
@@ -56,6 +57,9 @@ DLL_OBJS=$(XSD2CPPOBJS)
 DLL_LIBS=support
 DLL_TARGET=xsd2cpp
 SHIP_PRIVATE_DYNAMIC_LIBRARIES+=$(DLL_TARGET)
+
+# Complex.cpp is large and template-heavy; -O3 exhausts memory on low-RAM hosts.
+Complex.cpp_CC_FLAGS += -O1
 
 # this should always be last!
 include ${BUILD_ROOT}/make/rules.mk

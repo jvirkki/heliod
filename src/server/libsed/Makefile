@@ -51,6 +51,11 @@ AR_TARGET=sed
 EXPORT_LIBRARIES=$(AR_TARGET)
 AR_OBJS=$(SEDOBJS)
 
+$(OBJDIR)/sed1.o: sed1.c
+	$(PRECC) $(CC) -fPIC $(CC_FLAGS) $($<_CC_FLAGS) -c \
+		-o $@ $<
+
 # this should always be last!
+sed1.c_CC_FLAGS += -fPIC
 include ${BUILD_ROOT}/make/rules.mk
 

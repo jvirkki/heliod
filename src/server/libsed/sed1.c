@@ -395,7 +395,7 @@ PRStatus sed_eval_buffer(sed_eval_t *eval, const char *buf, int bufsz, void *fou
         char *n;
         int llen;
 
-        n = memchr(buf, '\n', bufsz);
+        n = (char *)memchr(buf, '\n', bufsz);
         if (n == NULL)
             break;
 
@@ -950,7 +950,7 @@ static void arout(sed_eval_t *eval)
             if ((fi = PR_Open((*eval->aptr)->re1, PR_RDONLY, 0)) == NULL)
                 continue;
             while ((n  = PR_Read(fi, buf, sizeof(buf))) > 0) {
-                PR_Write(eval->fout, buf, n);
+                PR_Write((PRFileDesc *)eval->fout, buf, n);
             }
             PR_Close(fi);
         }
@@ -964,7 +964,7 @@ static void arout(sed_eval_t *eval)
  */
 static void wline(sed_eval_t *eval, char *buf, int sz)
 {
-    PRFileDesc *fd = eval->fout;
+    PRFileDesc *fd = (PRFileDesc *)eval->fout;
     PRIOVec iov[2];
     int ioc = 0;
 
@@ -974,7 +974,7 @@ static void wline(sed_eval_t *eval, char *buf, int sz)
         ioc++;
     }
 
-    iov[ioc].iov_base = "\n";
+    iov[ioc].iov_base = (char *)"\n";
     iov[ioc].iov_len = 1;
     ioc++;
 

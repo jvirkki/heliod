@@ -32,8 +32,9 @@
 #
 
 BUILD_ROOT=../../..
+
 USE_NSPR=1
-USE_MAPFILE=1
+USE_MAPFILE=
 HP_NO_CORBA_PCH=1
 
 include $(BUILD_ROOT)/make/base.mk

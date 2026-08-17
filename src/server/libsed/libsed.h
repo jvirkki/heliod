@@ -204,4 +204,13 @@ void sed_destroy_eval(sed_eval_t *eval);
 }
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+struct _step_vars_storage;
+int sed_step(char *src, char *dst, int len, struct _step_vars_storage *vars);
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* LIBSED_H */

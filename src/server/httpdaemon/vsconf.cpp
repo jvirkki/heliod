@@ -41,6 +41,7 @@
 #include "httpdaemon/dbthttpdaemon.h"
 #include "httpdaemon/vsconf.h"
 #include "frame/log.h"
+#include "base/ereport.h"
 
 // NVPairTree is a helper class to lookup variables from 2 levels
 NVPairTree::NVPairTree(const NVPairs& first,
@@ -84,6 +85,28 @@ VirtualServer :: VirtualServer(ServerXMLSchema::VirtualServer& config,
 
     for (i = 0; i < METHOD_MAX; i++)
         acl_method_shortcuts[i] = ACL_SHORTCUT_UNKNOWN;
+
+    // Build this VS's effective ReverseProxyConfig: start from the global
+    // (magnus.conf-derived) config, then layer this VS's <reverse-proxy>
+    // element's overrides, if any, on top.
+    reverseProxyConfig = ReverseProxyConfig_GetGlobal();
+    if (reverseProxy.enabled) {
+        reverseProxyConfig.overrideIPHeader(reverseProxy.ipHeader);
+
+        if (reverseProxy.logAttribution.getEnumValue() != ServerXMLSchema::LogAttribution::LOGATTRIBUTION_) {
+            reverseProxyConfig.overrideLogAttribution(
+                ReverseProxyConfig::parseLogAttribution(reverseProxy.logAttribution.getStringValue()));
+        }
+
+        for (int r = 0; r < reverseProxy.getTrustedIpCount(); r++) {
+            char errbuf[256];
+            if (!reverseProxyConfig.addTrustedIP(*reverseProxy.getTrustedIp(r), errbuf, sizeof(errbuf))) {
+                ereport(LOG_MISCONFIG,
+                        "Invalid trusted-ip in <reverse-proxy> for virtual "
+                        "server %s: %s", name.getStringValue(), errbuf);
+            }
+        }
+    }
 
     unbound = (getHttpListenerNameCount() == 0);
 

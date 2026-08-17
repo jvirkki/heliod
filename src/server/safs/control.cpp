@@ -378,6 +378,10 @@ static const Result *control_dashu(const Arguments *args, Session *sn, Request *
     pblock_kllinsert(pb_key_expr, (PRInt64)args, rq->vars);
 
     Request *new_rq = request_create_child(sn, rq, NULL, operand.p, NULL);
+    if (!new_rq) {
+        pblock_removekey(pb_key_expr, rq->vars);
+        return result_out_of_memory(sn, rq);
+    }
 
     PRBool exists = PR_FALSE;
     if (servact_lookup(sn, new_rq) == REQ_PROCEED) {

@@ -132,7 +132,7 @@ class SunTestSuite
         PRInt32 hsperiod;
         static PRIntervalTime slowthreshold;
 
-        void addScrubber(NSString apath, char* name, RegexScrubber*& scrubber);
+	void addScrubber(NSString apath, const char* name, RegexScrubber*& scrubber);
 };
 
 class SunTestProperties
@@ -146,7 +146,7 @@ class SunTestProperties
         SunTestProperties* parent;
 
     protected:
-        void addScrubber(SunTestSuite& suite, NSString apath, char* name, RegexScrubber*& scrubber);
+	void addScrubber(SunTestSuite& suite, NSString apath, const char* name, RegexScrubber*& scrubber);
 };
 
 class BaseTestDefinition

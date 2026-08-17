@@ -398,8 +398,8 @@ const char *
 nscperror_lookup(int error)
 {
     const char *msg = NULL;
-    SSLErrorCodes ssl_max_error = SSL_ERROR_END_OF_LIST - SSL_ERROR_BASE - 1;
-    SECErrorCodes sec_max_error = SEC_ERROR_END_OF_LIST - SEC_ERROR_BASE -1;
+    SSLErrorCodes ssl_max_error = (SSLErrorCodes)(SSL_ERROR_END_OF_LIST - SSL_ERROR_BASE - 1);
+    SECErrorCodes sec_max_error = (SECErrorCodes)(SEC_ERROR_END_OF_LIST - SEC_ERROR_BASE - 1);
         
     /* When NSS adds new error messages the asserts below will blow up as
      * a reminder. Do the following (or better yet, automate the whole mess):
@@ -438,7 +438,7 @@ nscperror_lookup(int error)
         PRInt32 msglen = PR_GetErrorTextLength();
         if (msglen > 0) {
             msg = (char *)MALLOC(msglen);
-            PR_GetErrorText(msg); 
+            PR_GetErrorText((char *)msg); 
         } else
             msg = STRDUP("Unknown Error");
     }

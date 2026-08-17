@@ -52,5 +52,12 @@ DLL_NONPARSED_OBJS=../../shtml/$(OBJDIR)/ShtmlPlugin.$(OBJ)
 SHIP_PUBLIC_DYNAMIC_LIBRARIES=$(DLL_TARGET)
 
 # this should always be last!
+# Linux: no mapfile support; force -fPIC for shared lib objects
+ifeq ($(OS_ARCH),Linux)
+USE_MAPFILE=
+LOCAL_CC_OPTS += -fPIC
+LOCAL_C_OPTS += -fPIC
+endif
+
 include $(BUILD_ROOT)/make/rules.mk
 

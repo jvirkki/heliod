@@ -41,6 +41,7 @@
  * intended publication of this Source Code.
  */
 
+#include <sys/uio.h>
 #include "nsfc_pvt.h"
 
 static PRInt64

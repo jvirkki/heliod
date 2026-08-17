@@ -1148,6 +1148,7 @@ CHILDEXEC_ERR ChildExec::_startListener()
     cbListenPid = pid;
     cbListenFd  = pipette[0];
     _res = CERR_OK;
+    return _res;
 }
 
 //

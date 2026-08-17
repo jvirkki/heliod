@@ -41,6 +41,7 @@
 #include "xalanc/XalanDOM/XalanDOMString.hpp"
 #include "xalanc/XercesParserLiaison/XercesDocumentWrapper.hpp"
 #include "xalanc/XercesParserLiaison/XercesDOMSupport.hpp"
+#include "xalanc/XercesParserLiaison/XercesParserLiaison.hpp"
 #include "xalanc/XPath/XObject.hpp"
 #include "xalanc/XPath/XPath.hpp"
 #include "xalanc/XPath/XPathEvaluator.hpp"
@@ -60,7 +61,7 @@ class LIBXSD2CPP_NAMESPACE::CachedDocumentWrapper : public DOMUserDataHandler {
 public:
     static inline CachedDocumentWrapper& getCachedDocumentWrapper(DOMNode *node);
     operator XercesDocumentWrapper *() { return wrapper; }
-    virtual void handle(DOMOperationType operation, const XMLCh *const key, void *data, const DOMNode *src, const DOMNode *dst);
+    virtual void handle(DOMOperationType operation, const XMLCh *const key, void *data, const DOMNode *src, DOMNode *dst);
     static PRBool isXPathResultCacheable(const char *xpath);
     const DOMNode * const *cacheXPathNodeSet(const char *xpath, const NodeRefListBase& nodeset);
     const DOMNode * const *getCachedXPathNodeSet(const char *xpath);
@@ -104,7 +105,7 @@ CachedDocumentWrapper& CachedDocumentWrapper::getCachedDocumentWrapper(DOMNode *
 // CachedDocumentWrapper::handle
 //-----------------------------------------------------------------------------
 
-void CachedDocumentWrapper::handle(DOMOperationType operation, const XMLCh *const key, void *data, const DOMNode *src, const DOMNode *dst)
+void CachedDocumentWrapper::handle(DOMOperationType operation, const XMLCh *const key, void *data, const DOMNode *src, DOMNode *dst)
 {
     switch (operation) {
     case NODE_DELETED:
@@ -114,6 +115,34 @@ void CachedDocumentWrapper::handle(DOMOperationType operation, const XMLCh *cons
         break;
     }
 }
+
+static PRBool xpathResultToBoolean(const XObjectPtr& xpathResult)
+{
+    switch (xpathResult->getType()) {
+    case XObject::eTypeBoolean:
+        return xpathResult->num() != 0.0;
+
+    case XObject::eTypeNumber:
+    case XObject::eTypeXTokenNumberAdapter:
+        return XObject::boolean(xpathResult->num());
+
+    case XObject::eTypeString:
+    case XObject::eTypeStringReference:
+    case XObject::eTypeStringAdapter:
+    case XObject::eTypeStringCached:
+    case XObject::eTypeXTokenStringAdapter:
+    case XObject::eTypeResultTreeFrag:
+        return XObject::boolean(xpathResult->str());
+
+    case XObject::eTypeNodeSet:
+    case XObject::eTypeNodeSetNodeProxy:
+        return XObject::boolean(xpathResult->nodeset());
+
+    default:
+        return xpathResult->num() != 0.0;
+    }
+}
+
 
 //-----------------------------------------------------------------------------
 // CachedDocumentWrapper::CachedDocumentWrapper
@@ -234,6 +263,7 @@ struct CachedXPath {
 class CachingXPathEvaluator {
 public:
     static inline const XObjectPtr evaluate(XercesDocumentWrapper *xercesDocumentWrapper, const DOMElement *contextElement, const char *xpath);
+    static PRBool toBoolean(const XObjectPtr& xpathResult);
 
 private:
     CachingXPathEvaluator();
@@ -241,6 +271,7 @@ private:
     inline const XPath& getXPath(const char *xpath);
     inline const XObjectPtr evaluate(XalanNode *contextNode, XalanElement *namespaceNode, const char *xpath);
 
+    XercesParserLiaison xercesParserLiaison;
     XercesDOMSupport *xercesDOMSupport;
     XPathEvaluator *xpathEvaluator;
     SimpleStringHash xpaths;
@@ -279,8 +310,28 @@ const XObjectPtr CachingXPathEvaluator::evaluate(XercesDocumentWrapper *xercesDo
 //-----------------------------------------------------------------------------
 
 CachingXPathEvaluator::CachingXPathEvaluator()
-: xercesDOMSupport(new XercesDOMSupport()), xpathEvaluator(new XPathEvaluator), xpaths(32)
+//: xercesDOMSupport(new XercesDOMSupport()), xpathEvaluator(new XPathEvaluator), xpaths(32)
+: xercesParserLiaison(),
+xercesDOMSupport(new XercesDOMSupport(xercesParserLiaison)),
+xpathEvaluator(new XPathEvaluator),
+xpaths(32)
 { }
+
+PRBool CachingXPathEvaluator::toBoolean(const XObjectPtr& xpathResult)
+{
+    switch (xpathResult->getType()) {
+    case XObject::eTypeNodeSet:
+    case XObject::eTypeNodeSetNodeProxy:
+        return XObject::boolean(xpathResult->nodeset());
+
+    case XObject::eTypeNumber:
+    case XObject::eTypeXTokenNumberAdapter:
+        return XObject::boolean(xpathResult->num());
+
+    default:
+        return XObject::boolean(xpathResult->str());
+    }
+}
 
 //-----------------------------------------------------------------------------
 // CachingXPathEvaluator::getXPath
@@ -408,7 +459,7 @@ PRBool Complex::evaluateXPathBoolean(CachedDocumentWrapper& documentWrapper, DOM
     const PRBool *b = documentWrapper.getCachedXPathBoolean(xpath);
     if (b == NULL) {
         const XObjectPtr xpathResult(CachingXPathEvaluator::evaluate(documentWrapper, contextElement, xpath));
-        b = documentWrapper.cacheXPathBoolean(xpath, xpathResult->boolean());
+        b = documentWrapper.cacheXPathBoolean(xpath, xpathResultToBoolean(xpathResult));
     }
 
     return *b;

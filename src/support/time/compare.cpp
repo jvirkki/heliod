@@ -37,6 +37,7 @@
  * Based on util.cpp - Rob McCool
  */
 
+#include <time.h>
 #include "nstime.h"
 #include <stdio.h>
 #if defined(AIX)

@@ -34,14 +34,18 @@
 BUILD_ROOT=../../..
 
 USE_NSPR=1
-USE_MAPFILE=1
+USE_MAPFILE=
 HP_NO_CORBA_PCH=1
 
 # disable position independent code to improve execution speed
-NO_KPIC=1
 
 include $(BUILD_ROOT)/make/base.mk
-
+NO_KPIC=0
+CFLAGS += -fPIC
+CXXFLAGS += -fPIC
+CCOPTS += -fPIC
+CXXOPTS += -fPIC
+KPIC = -fPIC
 all::
 
 MODULE=NsprWrap
@@ -91,5 +95,4 @@ endif
 
 # this should always be last!
 include ${BUILD_ROOT}/make/rules.mk
-
 

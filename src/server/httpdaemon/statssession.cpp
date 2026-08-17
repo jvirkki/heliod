@@ -126,7 +126,27 @@ void StatsSession::beginClient(PRNetAddr* remoteAddress)
     thread->lock();
     thread->threadStats.mode = STATS_THREAD_REQUEST;
     net_addr_copy(&thread->threadStats.addressClient, remoteAddress);
+    memset(&thread->threadStats.addressClientReported, 0,
+           sizeof(thread->threadStats.addressClientReported));
     thread->threadStats.timeRequestStarted = now;
+    thread->unlock();
+}
+
+//-----------------------------------------------------------------------------
+// StatsSession::updateReportedClient
+//-----------------------------------------------------------------------------
+
+void StatsSession::updateReportedClient(const PRNetAddr* reportedAddress)
+{
+    if (!StatsManager::isInitialized()) return;
+
+    thread->lock();
+    if (reportedAddress) {
+        net_addr_copy(&thread->threadStats.addressClientReported, reportedAddress);
+    } else {
+        memset(&thread->threadStats.addressClientReported, 0,
+               sizeof(thread->threadStats.addressClientReported));
+    }
     thread->unlock();
 }
 

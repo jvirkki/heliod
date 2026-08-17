@@ -50,7 +50,7 @@ DLL_LIBS+=$(DAEMON_DLL)
 DLL_LIBS+=support
 
 EXE_OBJS=htpasswd
-EXE_LIBS+=libcrypt
+EXE_LIBS+=libcrypt :libcrypt.so.1
 EXE_TARGET=htpasswd
 
 # set libprefix to null since we dont want the shared lib to have a prefix
@@ -58,5 +58,12 @@ LIBPREFIX=
 SHIP_PLUGIN_DYNAMIC_LIBRARIES=$(DLL_TARGET)
 #SHIP_PLUGIN_HELPER_FILES=htconvert
 SHIP_PUBLIC_BINARIES=$(EXE_TARGET)
+
+# Linux: no mapfile support; force -fPIC for shared lib objects
+ifeq ($(OS_ARCH),Linux)
+USE_MAPFILE=
+LOCAL_CC_OPTS += -fPIC
+LOCAL_C_OPTS += -fPIC
+endif
 
 include $(BUILD_ROOT)/make/rules.mk

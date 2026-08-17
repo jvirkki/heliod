@@ -37,7 +37,9 @@
 #define strneq(s1,s2,n) (strncmp((s1),(s2),(n))==0)
 
 #ifdef XP_UNIX
+#ifndef __cplusplus
 #define max(n1,n2) ((n1)>(n2)?(n1):(n2))
+#endif
 #endif
 
 #ifdef XP_WIN32

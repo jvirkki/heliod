@@ -31,19 +31,21 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-BUILD_ROOT=../../..
-USE_NSPR=1
-USE_MAPFILE=1
+NO_KPIC=0
+CFLAGS += -fPIC
+CXXFLAGS += -fPIC
 
+BUILD_ROOT=../../..
+
+USE_NSPR=1
+USE_MAPFILE=
 # disable position independent code to improve execution speed
-NO_KPIC=1
 
 include ${BUILD_ROOT}/make/base.mk
 
 ifeq ($(OS_ARCH),IRIX)
 C_DEBUG         = -O2 -OPT:mem_intrinsics=off
 endif
-
 
 MODULE=libdbm
 
@@ -57,7 +59,6 @@ LOCAL_DEF+= -DNSPR20
 LOCAL_DEF+= -DMOCHA
 LOCAL_DEF+= -D__DBINTERFACE_PRIVATE 
 LOCAL_DEF+= -DBUILDDBM_DLL 
-
 
 SHIP_PRIVATE_DYNAMIC_LIBRARIES=libdbm
 
@@ -93,7 +94,6 @@ DLL_OBJS += 	db	   \
         ndbm	   \
         strerror \
         nsres
-
 
 # this should always be last!
 include ${BUILD_ROOT}/make/rules.mk

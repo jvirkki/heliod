@@ -49,6 +49,10 @@
 #include "private/pprio.h"
 #endif /* !NS_OLDES3X */
 
+#ifndef FILE_MMAP_FLAGS
+#define FILE_MMAP_FLAGS MAP_PRIVATE
+#endif
+
 
 /* ----------------------------- buffer_open ------------------------------ */
 

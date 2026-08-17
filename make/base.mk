@@ -31,6 +31,12 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+DYNAMIC_LIB_SUFFIX ?= so
+STATIC_LIB_SUFFIX ?= a
+LD_DYNAMIC ?= -shared
+CC_SHARED_LIB_FLAGS ?= -fPIC
+NO_KPIC ?= 0
+
 # This is the base include file for all makefiles.
 #
 # All it now does is include the base include file of the current platform.

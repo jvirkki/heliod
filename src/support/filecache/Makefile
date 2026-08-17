@@ -34,7 +34,7 @@
 #
 #           CONFIDENTIAL AND PROPRIETARY SOURCE CODE OF
 #              NETSCAPE COMMUNICATIONS CORPORATION
-# Copyright © 1998, 1999 Netscape Communications Corporation.  All Rights
+# Copyright ï¿½ 1998, 1999 Netscape Communications Corporation.  All Rights
 # Reserved.  Use of this Source Code is subject to the terms of the
 # applicable license agreement from Netscape Communications Corporation.
 # The copyright notice(s) in this Source Code does not indicate actual or
@@ -42,12 +42,12 @@
 #
 
 BUILD_ROOT=../../..
+
 USE_NSPR=1
-USE_MAPFILE=1
+USE_MAPFILE=
 HP_NO_CORBA_PCH=1
 
 # disable position independent code to improve execution speed
-NO_KPIC=1
 
 include $(BUILD_ROOT)/make/base.mk
 MODULE=support

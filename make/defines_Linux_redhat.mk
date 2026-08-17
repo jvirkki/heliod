@@ -48,7 +48,7 @@ NSPR_INC=-I/usr/include/nspr4
 NSPR_LIBDIR=
 NSS_INC=-I/usr/include/nss3
 NSS_LIBDIR=
-LDAPSDK_INC=-I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
+LDAPSDK_INC=-I$(SBC)/ldapsdk/work/mozldap-$(subst _,.,$(LDAPSDK_VERSION))/mozilla/dist/public/ldap -I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
 LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/lib
 ZLIB_INC=
 ZLIB_LIBDIR=
@@ -60,7 +60,7 @@ PCRE_INC=
 PCRE_LIBDIR=
 ICU_INC=
 ICU_LIBDIR=
-SASL_INC=
+SASL_INC=/usr/include/sasl
 SASL_LIBDIR=
 
 RUNTIME_LIBDIR=$(NSS_LIBDIR)
