@@ -65,7 +65,7 @@ PR_BEGIN_EXTERN_C
 
 #define STATS_MAGIC                 "iWS\n"
 #define STATS_VERSION_MAJOR         1
-#define STATS_VERSION_MINOR         3
+#define STATS_VERSION_MINOR         4   /* 4: StatsRequestBucket gained protocol[] */
 
 #define STATS_STATUS_NOT_ENABLED 0x00
 #define STATS_STATUS_ENABLED     0x01
@@ -157,6 +157,7 @@ typedef struct _StatsRequestBucket {
 
     char method[16];
     char uri[128];
+    char protocol[16];   /* e.g. "HTTP/1.1", "HTTP/2" -- for the Sessions dump */
 
     /* Note: this structure may grow in future versions */
 } StatsRequestBucket;

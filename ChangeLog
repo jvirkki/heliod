@@ -1,3 +1,73 @@
+2026-09-01  Joe McCabe <joe@jmccabe.org>
+
+        * version 0.5
+
+            Adds HTTP/2, an event-driven I/O model, hardened TLS, and
+            modern content codings.  The NSS TLS stack and the
+            existing request-handling model (acceptor threads,
+            connection queue, DaemonSession worker threads and
+            keep-alive poll threads) remain the defaults.
+
+            TLS hardening (NSS): SSLv2 and SSLv3 code paths removed;
+            TLS 1.2 minimum / TLS 1.3 maximum enforced with
+            SSL_VersionRangeSet; cipher table rewritten around AEAD
+            suites (ECDHE-RSA/ECDSA AES-GCM and ChaCha20-Poly1305)
+            with RC4, 3DES and export-grade entries removed; ALPN
+            negotiation (http/1.1 and h2) and SNI-based certificate
+            selection via SSL_SNISocketConfigHook.  ALPN requires
+            NSS 3.123 or later; the Debian build links NSS 3.127 from
+            the SBC tree (NSS_LIBDIR in defines_Linux_debian.mk).
+
+            Event-driven I/O model (opt-in): new EventLoop (epoll on
+            Linux, kqueue on BSD/macOS, event ports on Solaris),
+            WorkerPool and EventDispatcher in src/server/httpdaemon.
+            Selected per listener with the new <io-model> element in
+            server.xml, "blocking" (the default, i.e. the existing
+            model) or "event"; HELIOD_EVENT_MODEL /
+            HELIOD_EVENT_IDLE_TIMEOUT environment overrides.  In the
+            event model the acceptor threads hand new connections to
+            an event loop, which takes the place of the connection
+            queue and keep-alive poll threads: it watches idle
+            keep-alive connections and dispatches ready connections
+            to a worker pool that grows on demand from min-threads to
+            max-threads.  As in the existing model, a worker thread
+            holds a connection only while processing a request.
+
+            HTTP/2 (RFC 9113) via nghttp2, on event-model listeners:
+            negotiated through ALPN "h2" over TLS, plus cleartext h2c
+            with prior knowledge (connection-preface detection).  The
+            HTTP/1.1 Upgrade: h2c path and server push are not
+            supported.  Each stream is dispatched through the normal
+            NSAPI/SAF pipeline as a synthetic HTTP/1.1 request, so
+            static files, CGI, FastCGI, ACLs and access logging work
+            unchanged; split Cookie header fields (RFC 9113 8.2.3)
+            are rejoined before dispatch.  Streams are processed from
+            a shared worker pool rather than tying a thread to each
+            connection; idle-connection timeout; h2spec conformance
+            138/146.
+
+            Compression: Brotli (br) and Zstandard (zstd) content
+            codings added to the http-compression output filter
+            alongside gzip, chosen by Accept-Encoding q-value with a
+            br > zstd > gzip tie-break.  libnghttp2, libbrotlienc and
+            libzstd are linked into libns-httpd40.so.
+
+            perfdump gains an event-pool section and an "HTTP/2 (this
+            process)" section with stream accounting, and lists
+            event-model and HTTP/2 sessions.
+
+            Build and test: libnghttp2, libbrotli and libzstd
+            development packages are new build dependencies;
+            create-instance and post-install are installed into the
+            work bin so the smoke tests can create their own
+            instance; test/TESTING.md added, along with smoke tests
+            for TLS, event vs. blocking I/O parity, HTTP/2 (basic,
+            lifecycle, parallel streams, streaming responses, request
+            end, idle timeout, cookies, client IP, FastCGI, h2spec,
+            browser interop, h2 vs. HTTP/1.1 performance),
+            compression and worker-pool growth.
+
+
 2026-08-17  Joe McCabe <joe@jmccabe.org>
 
         * version 0.4

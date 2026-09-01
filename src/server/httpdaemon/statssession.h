@@ -61,7 +61,8 @@ public:
     inline void beginFunction();
     inline void endFunction(int indexProfileBucket);
     inline void abortFunction();
-    void beginProcessing(const VirtualServer* vs, const HHString& method, const HHString& uri);
+    void beginProcessing(const VirtualServer* vs, const HHString& method,
+                         const HHString& uri, const char* protocol = NULL);
     void endProcessing(const VirtualServer* vs, int statusHttp, PRInt64 countBytesReceived, PRInt64 countBytesTransmitted);
     void abortProcessing(const VirtualServer* vs);
     PRIntervalTime getRequestStartTime() { return ticksBeginRequest; }

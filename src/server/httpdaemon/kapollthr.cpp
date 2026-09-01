@@ -492,8 +492,12 @@ KAPollThread::AcceleratedRespond(PRInt32 numAcceleratable, AcceleratorAsync *asy
         // Track session statistics
         beginRequest();
         VirtualServer* vs = GetVS(connection);
-        beginProcessing(vs, connection->httpHeader.GetMethod(), 
-                        connection->httpHeader.GetRequestAbsPath());
+        int kaProtoVer = connection->httpHeader.GetNegotiatedProtocolVersion();
+        const char *kaProto = (kaProtoVer >= PROTOCOL_VERSION_HTTP11) ? "HTTP/1.1"
+                            : (kaProtoVer >= PROTOCOL_VERSION_HTTP10) ? "HTTP/1.0"
+                                                                      : "HTTP/0.9";
+        beginProcessing(vs, connection->httpHeader.GetMethod(),
+                        connection->httpHeader.GetRequestAbsPath(), kaProto);
         // Track perf bucket statistics
         beginFunction();
         AcceleratorAsyncStatus status = accel_async_service(async, connection, &status_num, &transmitted);

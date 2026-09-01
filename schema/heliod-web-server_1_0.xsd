@@ -845,7 +845,7 @@
     <xs:element name="server-header" type="xs:string" minOccurs="0">
       <xs:annotation>
         <xs:appinfo>
-          <appinfo:implicit>heliod-web-server/0.4</appinfo:implicit>
+          <appinfo:implicit>heliod-web-server/0.5</appinfo:implicit>
         </xs:appinfo>
       </xs:annotation>
     </xs:element>
@@ -2514,6 +2514,14 @@
       <xs:annotation>
         <xs:appinfo>
           <appinfo:implicit>false</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:element>
+
+    <xs:element name="io-model" type="ioModelType" default="blocking" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>blocking</appinfo:implicit>
         </xs:appinfo>
       </xs:annotation>
     </xs:element>
@@ -4254,6 +4262,20 @@
     <xs:enumeration value="inet"/>
     <xs:enumeration value="inet6"/>
     <xs:enumeration value="nca"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="ioModelType">
+  <xs:annotation>
+    <xs:documentation>
+      The I/O threading model for this listener. "blocking" uses the
+      legacy DaemonSession thread-per-connection model. "event" uses
+      the event-driven epoll path with a bounded worker pool.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="blocking"/>
+    <xs:enumeration value="event"/>
   </xs:restriction>
 </xs:simpleType>
 

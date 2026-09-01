@@ -52,6 +52,7 @@ class DaemonSession;
 class PollManager;
 class HttpRequest;
 class ListenSocket;
+namespace heliod { class H2Stream; }
 
 extern "C" void DaemonSessionClock(void* context);
 
@@ -105,6 +106,22 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
         void run(void);
 
         /**
+         * Process a single connection on the current thread. Used by the
+         * event-driven I/O path instead of dedicating a long-lived thread.
+         */
+        static void processConnection(Connection* conn);
+
+        /**
+         * Returns the persistent per-thread DaemonSession used by the
+         * event-driven worker threads, creating it on first use. The
+         * request processing machinery (HttpRequest::StartSession's
+         * one-time thread initialization, the thread malloc pool, NSAPI
+         * thread globals) requires a DaemonSession and its HttpRequest to
+         * live as long as the thread that uses them.
+         */
+        static DaemonSession* GetWorkerSession(void);
+
+        /**
          * Starts additonal DaemonSession threads if necessary.
          *
          * No additional threads will be created if the number of 
@@ -123,6 +140,15 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
         // Misc accessors
         const char* GetServerIP(void) const;
         int GetServerPort(void) const;
+
+        // Populate serverIP/serverPort from the current conn's listener/local
+        // address only, skipping the rest of prepareConnection() (no SSL
+        // handshake, no client statistics).  The HTTP/2 stream dispatch path
+        // reuses this per-thread worker session against a synthetic per-stream
+        // Connection that never went through prepareConnection(); without this,
+        // GetServerIP() returns NULL and SAFs that read it (e.g. FastCGI's
+        // SERVER_ADDR) dereference a NULL pointer.
+        void SetServerAddrFromConn(void);
         PRNetAddr * GetLocalAddress(void);
         PRNetAddr * GetRemoteAddress(void);
         pool_handle_t* GetThreadPool(void);
@@ -166,7 +192,13 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
          * that are allowed to run in this configuration.
          */
         static PRInt32 GetMaxSessions(void);
-        
+
+        /**
+         * Returns the minimum (initial) number of request-processing threads
+         * the pool starts with before expanding under load.
+         */
+        static PRInt32 GetMinSessions(void);
+
         /**
          * Returns the total number of <code>DaemonSession</code> threads
          * that are currently running.
@@ -188,6 +220,8 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
          * Returns the input buffer size, i.e. the size of the largest request
          */
         static PRInt32 GetBufSize();
+
+friend class heliod::H2Stream;
 
 private:
         pool_handle_t* pool_;
@@ -338,6 +372,20 @@ private:
 
         // Function to get initial request data from client
         PRBool GetConnection(void);
+
+        /**
+         * Prepare an already-obtained connection for request processing:
+         * set server IP/port, enable SSL if needed, and read initial data.
+         * Called by both the blocking GetConnection(void) path and the
+         * event-driven processConnection path.
+         */
+        PRBool prepareConnection(void);
+
+        /**
+         * Process a single connection after it has been prepared.
+         * Holds the request/response loop and keep-alive handling.
+         */
+        void processOneConnection(void);
 
         /**
          * Returns PR_TRUE if the socket is still open and has received a 

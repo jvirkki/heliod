@@ -190,6 +190,13 @@ NSAPI_PUBLIC void util_env_free(char **env)
 NSAPI_PUBLIC char *util_env_str(const char *name, const char *value) {
     char *t;
 
+    /* A NULL value must never crash the server while building the environment;
+     * treat a missing name or value as the empty string. */
+    if (!name)
+        name = "";
+    if (!value)
+        value = "";
+
     t = (char *) MALLOC(strlen(name)+strlen(value)+2); /* 2: '=' and '\0' */
 
     sprintf(t, "%s=%s", name, value);

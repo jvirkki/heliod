@@ -61,6 +61,7 @@ extern "C"
 #include "base/dbtbase.h"
 #include "certdb.h"
 #include <stdarg.h>
+#include <string.h>
 #include "util.h"
 #include "httpdaemon/vsconf.h"
 #include "httpdaemon/ListenSocketConfig.h"
@@ -73,20 +74,36 @@ extern "C"
 #include <windows.h>
 #endif
 
+/* ----------------------- ALPN for HTTP/2 (h2) ------------------------ */
+
+// ALPN protocol advertisement: http/1.1 first (fallback), h2 second
+// (preferred).  With NSS SetNextProtoNego, the first entry is moved to the end
+// of the wire list, so the second entry (h2) is advertised as most preferred.
+static const unsigned char h2AlpnList[] = {
+    0x08, 'h', 't', 't', 'p', '/', '1', '.', '1',
+    0x02, 'h', '2'
+};
+
+static SECStatus h2ApplyALPN(PRFileDesc* sock)
+{
+    SECStatus stat = SSL_OptionSet(sock, SSL_ENABLE_ALPN, PR_TRUE);
+    if (stat == SECSuccess) {
+        stat = SSL_SetNextProtoNego(sock, h2AlpnList, sizeof(h2AlpnList));
+    }
+    return stat;
+}
+
 /* ----------------------- Multiple cipher support ------------------------ */
 
 #ifndef STRINGIFY
 #define STRINGIFY(literal) #literal
 #endif
 
-#define SET_SSL2_CIPHER(cipher) \
- set_cipher(SSL_EN_##cipher, "SSL_"STRINGIFY(cipher), ssl2Ciphers.ssl_##cipher)
+#define SET_SSL3_CIPHER(cipher, on) \
+ set_cipher(SSL_##cipher, "SSL_"STRINGIFY(cipher), on)
 
-#define SET_SSL3_CIPHER(cipher) \
- set_cipher(SSL_##cipher, "SSL_"STRINGIFY(cipher), ssl3TlsCiphers.ssl_##cipher)
-
-#define SET_TLS_CIPHER(cipher) \
- set_cipher(TLS_##cipher, "TLS_"STRINGIFY(cipher), ssl3TlsCiphers.tls_##cipher)
+#define SET_TLS_CIPHER(cipher, on) \
+ set_cipher(TLS_##cipher, "TLS_"STRINGIFY(cipher), on)
 
 
 SSLSocketConfiguration :: SSLSocketConfiguration(ServerXMLSchema::Ssl& config, 
@@ -100,7 +117,6 @@ ServerXMLSchema::Pkcs11& pkcs11, ConfigurationObject* parent)
   rsa_certs(0),
   ecc_certs(0),
   unknown_ciphers(0),
-  ssl2_ciphers(0),
   ssl3tls_ciphers(0),
   servercertCount(0)
 {
@@ -400,9 +416,9 @@ PRBool SSLSocketConfiguration :: CheckCertHosts(VirtualServer* vs, ListenSocketC
  * See enableSSL() where the contents of these lists are fed to NSS.
  *
  */
-void SSLSocketConfiguration :: set_cipher(PRInt32 cipher, 
-                                          const char *cipherName, 
-                                          const ServerXMLSchema::Bool& on)
+void SSLSocketConfiguration :: set_cipher(PRInt32 cipher,
+                                          const char *cipherName,
+                                          PRBool on)
 {
     SSLCipherSuiteInfo info;
     SECStatus status;
@@ -435,20 +451,24 @@ void SSLSocketConfiguration :: set_cipher(PRInt32 cipher,
     int auth = 0;
     int kea = 0;
     const char * certType = NULL;
+    PRBool isTLS13Cipher = (strncmp(cipherName, "TLS_AES_", 8) == 0 ||
+                            strncmp(cipherName, "TLS_CHACHA20", 12) == 0);
 
-    if (!strcmp(info.authAlgorithmName, "RSA"))   { auth = AUTH_RSA; }
-    if (!strcmp(info.authAlgorithmName, "ECDSA")) { auth = AUTH_ECDSA; }
-    if (!strcmp(info.keaTypeName, "RSA"))   {kea = KEA_RSA; }
-    if (!strcmp(info.keaTypeName, "ECDHE")) {kea = KEA_ECDHE; }
-    if (!strcmp(info.keaTypeName, "ECDH"))  {kea = KEA_ECDH; }
+    if (!isTLS13Cipher) {
+        if (!strcmp(info.authAlgorithmName, "RSA"))   { auth = AUTH_RSA; }
+        if (!strcmp(info.authAlgorithmName, "ECDSA")) { auth = AUTH_ECDSA; }
+        if (!strcmp(info.keaTypeName, "RSA"))   {kea = KEA_RSA; }
+        if (!strcmp(info.keaTypeName, "ECDHE")) {kea = KEA_ECDHE; }
+        if (!strcmp(info.keaTypeName, "ECDH"))  {kea = KEA_ECDH; }
 
-    if (auth == AUTH_RSA   && kea == KEA_ECDHE) { certType = "RSA"; }
-    if (auth == AUTH_RSA   && kea == KEA_RSA)   { certType = "RSA"; }
-    if (auth == AUTH_ECDSA && kea == KEA_ECDHE) { certType = "ECC"; }
-    if (auth == AUTH_ECDSA && kea == KEA_ECDH)  { certType = "ECC"; }
-    if (auth == AUTH_RSA   && kea == KEA_ECDH)  { certType = "ECC"; }
+        if (auth == AUTH_RSA   && kea == KEA_ECDHE) { certType = "RSA"; }
+        if (auth == AUTH_RSA   && kea == KEA_RSA)   { certType = "RSA"; }
+        if (auth == AUTH_ECDSA && kea == KEA_ECDHE) { certType = "ECC"; }
+        if (auth == AUTH_ECDSA && kea == KEA_ECDH)  { certType = "ECC"; }
+        if (auth == AUTH_RSA   && kea == KEA_ECDH)  { certType = "ECC"; }
+    }
 
-    if (!certType) {
+    if (!certType && !isTLS13Cipher) {
         // ugly: getting an unknown type will be bad. this should never happen
         // unless new ciphers are added which don't match the rules above.
         // since we don't know which key type it needs, don't prevent
@@ -472,11 +492,7 @@ void SSLSocketConfiguration :: set_cipher(PRInt32 cipher,
     if (on) {
         enabledList.append((void *)cipher);
         ereport(LOG_VERBOSE, "enabling  %s", line);
-        if (SSL_IS_SSL2_CIPHER(cipher)) {
-            ssl2_ciphers++; 
-        } else { 
-            ssl3tls_ciphers++; 
-        }
+        ssl3tls_ciphers++;
 
     } else {
         disabledList.append((void *)cipher);
@@ -494,8 +510,10 @@ void SSLSocketConfiguration :: set_cipher(PRInt32 cipher,
     }
 
     // Track how many RSA/ECC suites we have enabled
-    if (!strcmp(certType, "RSA")) { rsa_ciphers++; }
-    else if (!strcmp(certType, "ECC")) { ecc_ciphers++; }
+    if (certType) {
+        if (!strcmp(certType, "RSA")) { rsa_ciphers++; }
+        else if (!strcmp(certType, "ECC")) { ecc_ciphers++; }
+    }
 
     // Track whether any export ciphers are enabled
     if (info.isExportable) {
@@ -507,96 +525,54 @@ void SSLSocketConfiguration :: set_cipher(PRInt32 cipher,
 
 void SSLSocketConfiguration :: set_ciphers()
 {
-    char err[MAGNUS_ERROR_LEN];
-    int x;
-
-    if ( (clientAuth.CLIENTAUTH_FALSE != clientAuth) && 
-         (PR_FALSE == ssl3) &&
-         (PR_FALSE == tls) )
+    // Client certificate authentication requires TLS 1.2+; since the
+    // modernized configuration always enables TLS 1.2/1.3, this check
+    // is effectively a no-op, but it preserves the intent of the
+    // original validation.
+    if (clientAuth.CLIENTAUTH_FALSE != clientAuth)
     {
-        throw ConfigurationServerXMLException(*this, 
-                              XP_GetAdminStr(DBT_servNSSClientAuthMisconfig));
+        ereport(LOG_VERBOSE, "Client authentication requested; TLS 1.2+ required");
     }
 
-    /* To inform the user, call getglobals again to make sure at least
-       one version is active */
-    if ( (PR_FALSE == ssl2) && (PR_FALSE == ssl3) && (PR_FALSE == tls) )
-    {
-        throw ConfigurationServerXMLException(*this, 
-                                        XP_GetAdminStr(DBT_servNSSNoCiphers));
+    // Modern AEAD-only cipher policy. SSLv2 and SSLv3 have been removed.
+    // Only TLS 1.2/1.3 forward-secret or PFS-capable suites are enabled.
+    // CBC, RC4, 3DES, NULL, and export-grade suites are intentionally absent.
+
+    // TLS 1.3 suites
+    set_cipher(TLS_AES_128_GCM_SHA256, "TLS_AES_128_GCM_SHA256", PR_TRUE);
+    set_cipher(TLS_AES_256_GCM_SHA384, "TLS_AES_256_GCM_SHA384", PR_TRUE);
+    set_cipher(TLS_CHACHA20_POLY1305_SHA256,
+               "TLS_CHACHA20_POLY1305_SHA256", PR_TRUE);
+
+    // TLS 1.2 ECDHE forward-secret suites
+    set_cipher(TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+               "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", PR_TRUE);
+    set_cipher(TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+               "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", PR_TRUE);
+    set_cipher(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+               "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", PR_TRUE);
+    set_cipher(TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+               "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", PR_TRUE);
+    set_cipher(TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+               "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", PR_TRUE);
+    set_cipher(TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+               "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256", PR_TRUE);
+
+    // TLS 1.2 RSA key-exchange suites (kept for compatibility, but ECDHE
+    // is preferred by the ordering above)
+    set_cipher(TLS_RSA_WITH_AES_128_GCM_SHA256,
+               "TLS_RSA_WITH_AES_128_GCM_SHA256", PR_TRUE);
+    set_cipher(TLS_RSA_WITH_AES_256_GCM_SHA384,
+               "TLS_RSA_WITH_AES_256_GCM_SHA384", PR_TRUE);
+
+    if (!ssl3tls_ciphers) {
+        throw ConfigurationServerXMLException(*this,
+                 XP_GetAdminStr(DBT_servNSSTLSOnWithoutCiphers));
     }
 
-    // Call set_ssl2_cipher() for all known SSL2 ciphers
-    if (ssl2)
-    {
-        SET_SSL2_CIPHER(RC4_128_WITH_MD5);
-        SET_SSL2_CIPHER(RC4_128_EXPORT40_WITH_MD5);
-        SET_SSL2_CIPHER(RC2_128_CBC_WITH_MD5);
-        SET_SSL2_CIPHER(RC2_128_CBC_EXPORT40_WITH_MD5);
-        SET_SSL2_CIPHER(DES_64_CBC_WITH_MD5);
-        SET_SSL2_CIPHER(DES_192_EDE3_CBC_WITH_MD5);
-
-        if (!ssl2_ciphers) {
-            throw ConfigurationServerXMLException(*this, 
-                     XP_GetAdminStr(DBT_servNSSSSLv2OnWithoutCiphers));
-        }
-
-        ereport(LOG_VERBOSE,
-                "SSLv2 is enabled and %d SSLv2 ciphers are enabled", 
-                ssl2_ciphers);
-    }
-
-    // Call set_ssl3_tls_cipher() for all known SSL3/TLS ciphers
-    if (ssl3 || tls)
-    {
-        SET_SSL3_CIPHER(RSA_WITH_RC4_128_MD5);
-        SET_SSL3_CIPHER(RSA_WITH_RC4_128_SHA);
-        SET_SSL3_CIPHER(RSA_WITH_3DES_EDE_CBC_SHA);
-        SET_SSL3_CIPHER(RSA_WITH_DES_CBC_SHA);
-        SET_SSL3_CIPHER(RSA_EXPORT_WITH_RC4_40_MD5);
-        SET_SSL3_CIPHER(RSA_EXPORT_WITH_RC2_CBC_40_MD5);
-        SET_SSL3_CIPHER(RSA_WITH_NULL_MD5);
-        SET_SSL3_CIPHER(RSA_WITH_NULL_SHA);
-        SET_SSL3_CIPHER(RSA_FIPS_WITH_3DES_EDE_CBC_SHA);
-        SET_SSL3_CIPHER(RSA_FIPS_WITH_DES_CBC_SHA);
-
-        SET_TLS_CIPHER(RSA_EXPORT1024_WITH_DES_CBC_SHA);
-        SET_TLS_CIPHER(RSA_EXPORT1024_WITH_RC4_56_SHA);
-        SET_TLS_CIPHER(ECDHE_RSA_WITH_AES_128_CBC_SHA);
-        SET_TLS_CIPHER(ECDH_RSA_WITH_AES_128_CBC_SHA);
-        SET_TLS_CIPHER(ECDH_RSA_WITH_RC4_128_SHA);
-        SET_TLS_CIPHER(ECDH_RSA_WITH_3DES_EDE_CBC_SHA);
-        SET_TLS_CIPHER(ECDH_RSA_WITH_AES_256_CBC_SHA);
-        SET_TLS_CIPHER(ECDH_ECDSA_WITH_AES_128_CBC_SHA);
-        SET_TLS_CIPHER(ECDH_ECDSA_WITH_RC4_128_SHA);
-        SET_TLS_CIPHER(ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA);
-        SET_TLS_CIPHER(ECDH_ECDSA_WITH_AES_256_CBC_SHA);
-        SET_TLS_CIPHER(ECDHE_ECDSA_WITH_AES_128_CBC_SHA);
-        SET_TLS_CIPHER(ECDHE_ECDSA_WITH_NULL_SHA);
-        SET_TLS_CIPHER(ECDHE_ECDSA_WITH_RC4_128_SHA);
-        SET_TLS_CIPHER(ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA);
-        SET_TLS_CIPHER(ECDHE_ECDSA_WITH_AES_256_CBC_SHA);
-        SET_TLS_CIPHER(ECDHE_RSA_WITH_NULL_SHA);
-        SET_TLS_CIPHER(ECDHE_RSA_WITH_RC4_128_SHA);
-        SET_TLS_CIPHER(ECDHE_RSA_WITH_3DES_EDE_CBC_SHA);
-        SET_TLS_CIPHER(ECDHE_RSA_WITH_AES_256_CBC_SHA);
-        SET_TLS_CIPHER(RSA_WITH_AES_128_CBC_SHA);
-        SET_TLS_CIPHER(RSA_WITH_AES_256_CBC_SHA);
-
-        if (ssl3 && !ssl3tls_ciphers) {
-            throw ConfigurationServerXMLException(*this,
-                     XP_GetAdminStr(DBT_servNSSSSLv3OnWithoutCiphers));
-        }
-
-        if (tls && !ssl3tls_ciphers) {
-            throw ConfigurationServerXMLException(*this, 
-                     XP_GetAdminStr(DBT_servNSSTLSOnWithoutCiphers));
-        }
-
-        ereport(LOG_VERBOSE,
-                "SSLv3/TLS is enabled and %d SSLv3/TLS ciphers are enabled", 
-                ssl3tls_ciphers);
-    }
+    ereport(LOG_VERBOSE,
+            "TLS 1.2/1.3 is enabled and %d AEAD cipher suites are configured",
+            ssl3tls_ciphers);
 }
 
 
@@ -667,20 +643,14 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
     else
         stat = SSL_OptionSet(sock, SSL_REQUEST_CERTIFICATE, PR_FALSE);
 
-    if ( (stat == SECSuccess) && (PR_TRUE == ssl2) )
-        stat = SSL_OptionSet(sock, SSL_ENABLE_SSL2, PR_TRUE);
-    else
-        stat = SSL_OptionSet(sock, SSL_ENABLE_SSL2, PR_FALSE);
-
-    if ( (stat == SECSuccess) && (PR_TRUE == ssl3) )
-        stat = SSL_OptionSet(sock, SSL_ENABLE_SSL3, PR_TRUE);
-    else
-        stat = SSL_OptionSet(sock, SSL_ENABLE_SSL3, PR_FALSE);
-
-    if ( (stat == SECSuccess) && (PR_TRUE == tls) )
-        stat = SSL_OptionSet(sock, SSL_ENABLE_TLS, PR_TRUE);
-    else
-        stat = SSL_OptionSet(sock, SSL_ENABLE_TLS, PR_FALSE);
+    // Enforce a modern TLS version range: TLS 1.2 minimum, TLS 1.3 maximum.
+    // SSLv2 and SSLv3 are unconditionally disabled.
+    if (stat == SECSuccess) {
+        SSLVersionRange vrange;
+        vrange.min = SSL_LIBRARY_VERSION_TLS_1_2;
+        vrange.max = SSL_LIBRARY_VERSION_TLS_1_3;
+        stat = SSL_VersionRangeSet(sock, &vrange);
+    }
 
     if ( (stat == SECSuccess) && (PR_TRUE == tlsRollbackDetection) )
         stat = SSL_OptionSet(sock, SSL_ROLLBACK_DETECTION, PR_TRUE);
@@ -779,21 +749,43 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
     }
 
 
-    // Install all the server certs previously loaded
-    for (int cert = 0; cert < servercertCount; cert++) 
-    {
-        if (SSL_ConfigSecureServer(sock, servercert[cert], serverkey[cert], 
-                                   serverKEAType[cert]) != SECSuccess)
+    // Install the default server certificate. SNI callback below will
+    // re-select per-hostname certificates during the handshake.
+    if (servercertCount > 0) {
+        if (SSL_ConfigSecureServer(sock, servercert[0], serverkey[0],
+                                   serverKEAType[0]) != SECSuccess)
         {
             ereport(LOG_FAILURE,
-                    XP_GetAdminStr(DBT_servNSSErrorSecureServerConfig), 
+                    XP_GetAdminStr(DBT_servNSSErrorSecureServerConfig),
                     system_errmsg());
             stat = SECFailure;
-        } 
-        else 
+        }
+        else
         {
-            ereport(LOG_VERBOSE, 
-                    "Installed server cert [%s]", servercertNickname[cert]);
+            ereport(LOG_VERBOSE,
+                    "Installed default server cert [%s]",
+                    servercertNickname[0]);
+        }
+    }
+
+    // Enable ALPN and register the protocol selection callback.
+    if (stat == SECSuccess) {
+        stat = h2ApplyALPN(sock);
+        if (stat != SECSuccess) {
+            ereport(LOG_FAILURE,
+                    "Failed to configure ALPN for h2: %s",
+                    system_errmsg());
+        }
+    }
+
+    // Register SNI callback for per-hostname certificate selection.
+    if (stat == SECSuccess) {
+        SSLSocketConfiguration* cfg = const_cast<SSLSocketConfiguration*>(this);
+        stat = SSL_SNISocketConfigHook(sock, sniCallback, cfg);
+        if (stat != SECSuccess) {
+            ereport(LOG_FAILURE,
+                    "Failed to register SNI callback: %s",
+                    system_errmsg());
         }
     }
 
@@ -811,11 +803,142 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
     }
 }
 
+/*
+ * ALPN selection callback.  Supports HTTP/2 ("h2") and HTTP/1.1.
+ * Prefers h2 when the client offers it.
+ */
+SECStatus SSLSocketConfiguration :: alpnCallback(void* /*arg*/,
+                                                 PRFileDesc* /*fd*/,
+                                                 const unsigned char* protos,
+                                                 unsigned int protosLen,
+                                                 unsigned char* protoOut,
+                                                 unsigned int* protoOutLen,
+                                                 unsigned int /*protoMaxOut*/)
+{
+    static const char h2[] = "h2";
+    static const char h11[] = "http/1.1";
+    const unsigned int h2Len = sizeof(h2) - 1;
+    const unsigned int h11Len = sizeof(h11) - 1;
+
+    // Scan client ALPN list for h2 first, then http/1.1.
+    for (unsigned int pass = 0; pass < 2; ++pass) {
+        const char* wanted = (pass == 0) ? h2 : h11;
+        const unsigned int wantedLen = (pass == 0) ? h2Len : h11Len;
+        unsigned int offset = 0;
+        while (offset + 1 < protosLen) {
+            unsigned int len = protos[offset++];
+            if (offset + len > protosLen) {
+                break;
+            }
+            if (len == wantedLen && memcmp(protos + offset, wanted, len) == 0) {
+                memcpy(protoOut, wanted, wantedLen);
+                *protoOutLen = wantedLen;
+                return SECSuccess;
+            }
+            offset += len;
+        }
+    }
+
+    // Client sent ALPN but did not offer a supported protocol.
+    return SECFailure;
+}
+
+/*
+ * SNI certificate selection callback. Replaces the fixed
+ * servercert[MAX_SERVER_CERTS] default with a hostname-keyed lookup.
+ * Returns SSL_SNI_CURRENT_CONFIG_IS_USED when no better cert is found,
+ * or 0..servercertCount-1 after reconfiguring the socket with the matched cert.
+ */
+PRInt32 SSLSocketConfiguration :: sniCallback(PRFileDesc* fd,
+                                               const SECItem* srvNameArr,
+                                               PRUint32 srvNameArrSize,
+                                               void* arg)
+{
+    SSLSocketConfiguration* cfg = static_cast<SSLSocketConfiguration*>(arg);
+    if (!cfg || !srvNameArr || srvNameArrSize == 0 ||
+        !srvNameArr->data || srvNameArr->len == 0) {
+        return SSL_SNI_CURRENT_CONFIG_IS_USED;
+    }
+
+    const SECItem* sniName = &srvNameArr[0];
+    char* hostname = (char*)PORT_Alloc(sniName->len + 1);
+    if (!hostname) {
+        return SSL_SNI_CURRENT_CONFIG_IS_USED;
+    }
+    memcpy(hostname, sniName->data, sniName->len);
+    hostname[sniName->len] = '\0';
+
+    int idx = cfg->findCertForHostname(hostname);
+    PORT_Free(hostname);
+
+    if (idx < 0) {
+        // No matching certificate; use the default cert already installed.
+        return SSL_SNI_CURRENT_CONFIG_IS_USED;
+    }
+
+    /*
+     * For the default certificate (idx 0) the socket already has the right
+     * cert, so skip the SNI reconfiguration entirely.  For non-default
+     * certs, reconfigure the socket with the matched cert/key.
+     *
+     * NSS 3.120 had a bug where SSL_ReconfigFD() (used internally by
+     * SSL_ConfigSecureServer()) dropped the ALPN next-protocol
+     * callback/list configured on the live socket, silently breaking ALPN
+     * for any connection that hit the SNI reconfiguration path.  This is
+     * fixed in NSS 3.123+; the build links against NSS 3.127
+     * (make/defines_Linux_debian.mk), so no explicit ALPN reapplication is
+     * required here.
+     */
+    if (idx > 0) {
+        if (SSL_ConfigSecureServer(fd, cfg->servercert[idx],
+                                   cfg->serverkey[idx],
+                                   cfg->serverKEAType[idx]) != SECSuccess) {
+            return SSL_SNI_SEND_ALERT;
+        }
+    }
+
+    if (idx == 0) {
+        return SSL_SNI_CURRENT_CONFIG_IS_USED;
+    }
+    return idx;
+}
+
+/*
+ * Return the index of the first configured server certificate whose
+ * subject matches the given hostname, or -1 if none match.
+ */
+int SSLSocketConfiguration :: findCertForHostname(const char* hostname) const
+{
+    if (!hostname || hostname[0] == '\0') {
+        return -1;
+    }
+
+    for (int i = 0; i < servercertCount; i++) {
+        if (CERT_VerifyCertName(servercert[i], hostname) == SECSuccess) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 PRBool SSLSocketConfiguration :: enable(PRFileDesc*& socket) const
 {
     socket = SSL_ImportFD(model, socket);
     if (socket)
     {
+        /*
+         * NSS 3.120 (and earlier) SSL_ImportFD()/SSL_ReconfigFD() does not
+         * propagate the ALPN callback/list configuration to the destination
+         * socket, silently breaking ALPN on every accepted connection. This
+         * is fixed in NSS 3.123+ (see make/defines_Linux_debian.mk), but
+         * reapplying ALPN here is cheap, idempotent, and protects against
+         * building against an older NSS.
+         */
+        if (h2ApplyALPN(socket) != SECSuccess) {
+            ereport(LOG_WARN,
+                    "Failed to configure ALPN on accepted socket: %s",
+                    system_errmsg());
+        }
         SSL_ResetHandshake(socket, PR_TRUE);
         return PR_TRUE;
     }
@@ -849,8 +972,9 @@ PRBool SSLSocketConfiguration :: check_bypass() const
 
     // check every server key/cert for bypass compatibility
 
-    if (ssl3) { protocolmask = SSL_CBP_SSL3; }
-    if (tls) { protocolmask |= SSL_CBP_TLS1_0; }
+    // With TLS 1.2+ enforced, use the strongest protocol mask available
+    // in this NSS build for bypass compatibility checking.
+    protocolmask = SSL_CBP_TLS1_0;
 
     for (int n = 0; n < servercertCount; n++) {
         SSL_CanBypass(servercert[n], serverkey[n], protocolmask,

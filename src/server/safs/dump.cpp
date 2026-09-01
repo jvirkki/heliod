@@ -47,6 +47,9 @@
 #include "frame/httpfilter.h"
 #include "httpdaemon/statsmanager.h"
 #include "httpdaemon/reverseproxyconfig.h"
+#include "httpdaemon/EventDispatcher.h"   // event worker pool / loop stats
+#include "httpdaemon/H2Session.h"         // HTTP/2 session counters
+#include "httpdaemon/H2StreamPool.h"      // HTTP/2 stream pool stats
 #include "safs/dump.h"
 
 #define SAFESTRING(a) ((a) ? (a) : "")
@@ -62,6 +65,7 @@ enum SessionColumnEnum {
     SESSION_COLUMN_CLIENT_REPORTED,
     SESSION_COLUMN_AGE,
     SESSION_COLUMN_VS,
+    SESSION_COLUMN_PROTOCOL,
     SESSION_COLUMN_METHOD,
     SESSION_COLUMN_URI,
     SESSION_COLUMN_FUNCTION,
@@ -79,6 +83,7 @@ static const NSString session_column_labels[SESSION_COLUMN_COUNT] = {
     "Reported Client",
     "Age",
     "VS",
+    "Protocol",
     "Method",
     "URI",
     "Function"
@@ -492,6 +497,68 @@ int write_stats_dump(PRFileDesc *fd, StatsHeaderNode *hdr)
         }
     }
 
+    // Event/Async thread pools.  These belong to the per-process event
+    // dispatcher (event I/O model / HTTP/2), which is not tracked in the shared
+    // stats table, so this reports the dispatcher of the process serving this
+    // /perfdump request rather than an aggregate across processes.
+    if (globalEventDispatcher) {
+        PR_fprintf(fd,
+                   "\nEvent/Async thread pools (this process):\n"
+                   "----------------------------\n"
+                   "EventWorkerPool:\n"
+                   "Idle/Live/Min/Max             %u/%u/%u/%u\n"
+                   "Work Queue Length             %u\n"
+                   "EventLoop Connections         %u\n",
+                   globalEventDispatcher->getWorkerIdleThreads(),
+                   globalEventDispatcher->getWorkerThreads(),
+                   globalEventDispatcher->getWorkerMinThreads(),
+                   globalEventDispatcher->getWorkerMaxThreads(),
+                   globalEventDispatcher->getWorkerQueueLength(),
+                   globalEventDispatcher->getEventLoopConnections());
+    }
+
+    // HTTP/2.  Same scope as the section above -- the process serving this
+    // request, not an aggregate -- because both the session counters and the
+    // stream pool are per-process singletons outside the shared stats table.
+    //
+    // These are the two HTTP/2 resources a client can exhaust, and neither is
+    // visible from outside the process.  "Live" sessions that keep climbing while
+    // peers are not holding that many connections open means sessions are being
+    // leaked; a stream-pool "peak" that has reached the maximum, or any non-zero
+    // "refused", means streams were turned away with REFUSED_STREAM and clients
+    // saw errors or retries.  Raise the cap with the Http2MaxStreams directive in
+    // magnus.conf.
+    {
+        PRUint32 h2total = heliod::H2Session::totalSessions();
+
+        PR_fprintf(fd,
+                   "\nHTTP/2 (this process):\n"
+                   "----------------------------\n"
+                   "Sessions Live/Peak/Total      %u/%u/%u\n",
+                   heliod::H2Session::liveSessions(),
+                   heliod::H2Session::peakSessions(),
+                   h2total);
+
+        // Only ask for the pool if HTTP/2 has actually been used, because
+        // instance() *creates* the singleton on first call and a stats page must
+        // not be the thing that constructs it.  Before any HTTP/2 traffic there is
+        // nothing to report anyway; the configured cap is logged at startup.
+        heliod::H2StreamConnectionPool* h2pool =
+            h2total ? heliod::H2StreamConnectionPool::instance() : NULL;
+
+        if (h2pool) {
+            PR_fprintf(fd,
+                       "Streams InUse/Peak/Max        %u/%u/%u\n"
+                       "Stream Structs Allocated      %u\n"
+                       "Streams Refused (pool full)   %llu\n",
+                       h2pool->inUse(),
+                       h2pool->peakInUse(),
+                       h2pool->maxStreams(),
+                       h2pool->allocated(),
+                       (unsigned long long)h2pool->overflows());
+        }
+    }
+
     // DNS info
     {
         StatsDnsBucket dnss;
@@ -699,6 +766,7 @@ int write_stats_dump(PRFileDesc *fd, StatsHeaderNode *hdr)
                     }
 
                     rows[y].columns[SESSION_COLUMN_VS] = thread->threadStats.vsId;
+                    rows[y].columns[SESSION_COLUMN_PROTOCOL] = thread->threadStats.requestBucket.protocol;
                     rows[y].columns[SESSION_COLUMN_METHOD] = thread->threadStats.requestBucket.method;
                     rows[y].columns[SESSION_COLUMN_URI] = thread->threadStats.requestBucket.uri;
                     rows[y].columns[SESSION_COLUMN_FUNCTION] = STATS_GET_FUNCTION_NAME(&thread->threadStats);

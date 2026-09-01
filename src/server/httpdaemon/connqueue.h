@@ -44,6 +44,10 @@
 class HttpHeader;
 class ListenSocket;
 class ConnectionQueue;
+class EventHandler;
+class EventLoop;
+
+namespace heliod { class H2Session; }
 
 extern "C" void ConnectionQueueClock(void* context);
 
@@ -102,9 +106,51 @@ class Connection
     PRStatus create(PRFileDesc* fd, const PRNetAddr *addr, ListenSocket* ls);
 
     /**
-     * Close the connection
+     * Close the connection, or arrange for it to be closed once the event path
+     * has finished with it.
+     *
+     * If an event-path dispatch is outstanding (see retainDispatch()) the close
+     * is deferred to whichever thread drops the last reference; otherwise it
+     * happens inline, exactly as it always did.  Either way the caller must
+     * treat the Connection as gone the moment this returns.
      */
     void destroy();
+
+    /**
+     * Take a reference on behalf of a dispatch that is being handed to a worker.
+     *
+     * The event loop hands connections to workers by pointer, and once an event
+     * has been reported there is no way to recall the dispatch: removing the fd
+     * from the backend does not unqueue a dispatch that has already been made.
+     * For HTTP/1.1 that was harmless, because only the worker that owned a
+     * connection could close it and the loop never watched an owned connection.
+     * HTTP/2 broke that: a session is watched while workers run its streams, so
+     * the thread finishing the last stream can close and recycle the connection
+     * while a dispatch for it is still queued.  The worker then runs connection
+     * setup against a socket that has been closed -- or, once the acceptor has
+     * reused the struct, against somebody else's live connection.
+     *
+     * A reference makes the window safe rather than merely narrow: destroy()
+     * will not close the socket or return the struct to the unused list while one
+     * is held, so the pointer the dispatch carries still means what it meant when
+     * the event was reported.
+     */
+    void retainDispatch();
+
+    /**
+     * Drop a reference taken by retainDispatch(), performing the deferred close
+     * if this is the last one and destroy() has been called in the meantime.
+     */
+    void releaseDispatch();
+
+    /**
+     * Whether destroy() has been called while a dispatch reference was held.
+     *
+     * A dispatch that finds this set arrived for a connection that is already
+     * being torn down: there is no request to serve and nothing to re-register,
+     * so the only thing left to do is drop the reference.
+     */
+    PRBool closePending() const { return fClosePending; }
 
     /**
      * Enable SSL/TLS
@@ -227,6 +273,120 @@ class Connection
     unsigned fSSLEnabled : 1;
     unsigned fUncleanShutdown : 1;
     unsigned fKeepAliveReservation : 1;
+
+    /**
+     * Event-driven fields: when fEventDriven is true, eventLoop owns readiness
+     * notification for this connection and eventHandler is invoked by the loop.
+     */
+    unsigned fEventDriven : 1;
+
+    /**
+     * Set by the event loop when this connection is being dispatched because
+     * its idle deadline expired rather than because it became readable.  The
+     * worker that picks the connection up shuts the session down instead of
+     * looking for a request that will never arrive.
+     */
+    unsigned fEventTimedOut : 1;
+
+    /**
+     * Set on the synthetic per-stream Connection an HTTP/2 stream runs against
+     * (see H2Stream::init), so the SAF pipeline can tell it is serving an
+     * HTTP/2 request even though the request itself is presented as HTTP/1.1.
+     * Used to label the protocol in the perfdump Sessions report.  Always 0 for
+     * real (ConnectionQueue) connections.
+     */
+    unsigned fHttp2 : 1;
+
+    /**
+     * Whether the event loop's backend currently holds this connection's fd.
+     *
+     * Owned exclusively by EventLoop, which maintains it under the same lock as
+     * the evNext/evPrev registry links below, and it is what makes
+     * addConnection() and removeConnection() idempotent.  That matters because
+     * "the loop is watching this fd" is not something the callers can reliably
+     * infer: a connection may be registered while workers are still running its
+     * HTTP/2 streams, and it may reach a worker either from the loop (which
+     * deregisters first) or from a direct requeue (which does not).  Without a
+     * single recorded fact the two paths disagree, and the disagreement costs the
+     * connection its life -- a duplicate add fails and the session treats that as
+     * a connection it cannot park.
+     *
+     * Declared here, among flags it has little to do with, so that it packs into
+     * the same bitfield unit as them: a new allocation unit further down would
+     * change sizeof(Connection), and the build does not track header
+     * dependencies, so every translation unit that was not recompiled would
+     * disagree about this struct's layout.
+     */
+    unsigned fInEventLoop : 1;
+
+    EventLoop* eventLoop;
+    EventHandler* eventHandler;
+
+    /**
+     * Absolute deadline, in NSPR interval ticks, after which the event loop
+     * reclaims this connection as idle.  Zero means no deadline.
+     *
+     * Only meaningful while the connection is registered with eventLoop.  The
+     * loop recomputes it on every registration, and a connection is
+     * re-registered after each dispatch, so this measures time since the last
+     * event rather than the age of the connection.
+     */
+    PRIntervalTime eventDeadline;
+
+    /**
+     * Links in the event loop's registry of currently-registered connections,
+     * which is what makes idle connections enumerable for expiry.
+     *
+     * Owned exclusively by EventLoop and valid only while registered.  These
+     * are deliberately separate from `next`: that field belongs to the
+     * keep-alive and accelerator subsystems, and although an event-driven
+     * connection does not enter those today, sharing the field would make any
+     * future overlap corrupt both lists.
+     */
+    Connection* evNext;
+    Connection* evPrev;
+
+    /**
+     * The live HTTP/2 session for this connection, or NULL when the
+     * connection is not speaking HTTP/2.
+     *
+     * The session is owned by the Connection and deliberately outlives a
+     * single worker dispatch: it holds the nghttp2 state machine and the
+     * open streams, so an idle HTTP/2 connection can be parked in the event
+     * loop between requests instead of pinning a worker thread.
+     */
+    heliod::H2Session* h2Session;
+
+    /**
+     * Outstanding event-path dispatch references.  See retainDispatch().
+     *
+     * Manipulated only through PR_Atomic*, because the thread that hands a
+     * connection to a worker and the thread that closes it are by definition
+     * different ones -- that is the whole reason the count exists.
+     */
+    PRInt32 dispatchRefs;
+
+    /**
+     * Set by destroy() when it could not close the connection because a dispatch
+     * reference was outstanding, and read by the dispatch that finds it.  See
+     * retainDispatch().
+     *
+     * Deliberately not one of the bitfields above: those are updated by several
+     * threads under several different locks, and a bitfield write is a
+     * read-modify-write of the whole allocation unit, so putting an unlocked flag
+     * in with them would let one thread's update erase another's.  Its own word
+     * costs four bytes and removes the question.
+     */
+    PRBool fClosePending;
+
+  private:
+    /**
+     * The close destroy() performs once nothing is holding the connection: shut
+     * the socket, drop the listen-socket config reference, and return the struct
+     * to the unused list.  Runs exactly once per connection, on whichever thread
+     * turns out to be last.
+     */
+    void destroyNow();
 };
 
 /**

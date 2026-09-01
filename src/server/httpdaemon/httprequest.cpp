@@ -525,8 +525,19 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
             }
         }
 
-        // Track session statistics
-        pSession->beginProcessing(vs, rqHdr->GetMethod(), rqHdr->GetRequestAbsPath());
+        // Track session statistics.  Record the wire protocol for the Sessions
+        // dump: the HTTP/1.x version from the request line, or HTTP/2 when this
+        // is a synthetic request dispatched for an HTTP/2 stream (which presents
+        // as HTTP/1.1 to the pipeline but is flagged on its Connection).
+        int protoVer = rqHdr->GetNegotiatedProtocolVersion();
+        const char *proto = (protoVer >= PROTOCOL_VERSION_HTTP11) ? "HTTP/1.1"
+                          : (protoVer >= PROTOCOL_VERSION_HTTP10) ? "HTTP/1.0"
+                                                                  : "HTTP/0.9";
+        Connection *httpConn = GetDaemonSession().conn;
+        if (httpConn && httpConn->fHttp2)
+            proto = "HTTP/2";
+        pSession->beginProcessing(vs, rqHdr->GetMethod(),
+                                  rqHdr->GetRequestAbsPath(), proto);
 
         // Try to process the request using the accelerator cache, falling back
         // to NSAPI if necessary
@@ -978,7 +989,23 @@ void HttpRequest::UnacceleratedRespond()
     PR_ASSERT(rqRq.rq.method_num != -1 || iStatus);
 
     /* Pass protocol as "protocol" in reqpb, and also in protv_num */
-    if (const HHString *hsProtocol = rqHdr->GetProtocol()) {
+    Connection *protoConn = GetDaemonSession().conn;
+    if (protoConn && protoConn->fHttp2) {
+        // An HTTP/2 stream is dispatched as a synthetic HTTP/1.1 request, so its
+        // request line says HTTP/1.1 and protv_num says the same -- which is what
+        // everything that negotiates behaviour off the version (chunking,
+        // persistence, Range: quirks, the reverse proxy's upstream request line)
+        // needs to keep believing, because HTTP/1.1 is what the pipeline is
+        // actually speaking to itself.
+        //
+        // This pblock entry is different: it is not used to negotiate anything, it
+        // is *reported*.  It becomes SERVER_PROTOCOL for CGI and FastCGI, $protocol
+        // in expressions, and getProtocol() through the Java connector, and every
+        // one of those is asking what the client spoke -- which was HTTP/2, and
+        // which an application has no other way to discover.  So report the wire
+        // protocol here and leave protv_num alone.
+        pblock_kvinsert(pb_key_protocol, "HTTP/2.0", 8, rqRq.rq.reqpb);
+    } else if (const HHString *hsProtocol = rqHdr->GetProtocol()) {
         pblock_kvinsert(pb_key_protocol, hsProtocol->ptr, hsProtocol->len, rqRq.rq.reqpb);
     } else {
         pblock_kvinsert(pb_key_protocol, "HTTP/0.9", 8, rqRq.rq.reqpb);

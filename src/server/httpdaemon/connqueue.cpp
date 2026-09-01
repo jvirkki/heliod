@@ -40,6 +40,7 @@
 #include "httpdaemon/libdaemon.h"
 #include "httpdaemon/dbthttpdaemon.h"
 #include "httpdaemon/connqueue.h"
+#include "httpdaemon/H2Session.h"
 #include "httpdaemon/statsmanager.h"
 #include "httpdaemon/ListenSocket.h"
 #include "httpdaemon/httpheader.h"
@@ -396,14 +397,32 @@ Connection::Connection()
     async.inbuf.buf = NULL;
     async.inbuf.cursize = 0;
     async.inbuf.maxsize = 0;
+    fEventDriven = PR_FALSE;
+    fEventTimedOut = PR_FALSE;
+    fHttp2 = PR_FALSE;
+    fInEventLoop = PR_FALSE;
+    eventLoop = NULL;
+    eventHandler = NULL;
+    eventDeadline = 0;
+    evNext = NULL;
+    evPrev = NULL;
+    h2Session = NULL;
+    dispatchRefs = 0;
+    fClosePending = PR_FALSE;
 
     accel_init_connection(this);
 }
 
 Connection::~Connection()
 {
-    // Once allocated, a connection object is never destroyed
-    PR_ASSERT(0);
+    // Pooled connections live in ConnectionQueue::_conns for the lifetime of
+    // the process and must never be deleted individually; a non-NULL
+    // connQueue is what identifies them.
+    //
+    // Connections synthesized outside the pool are ordinary heap objects and
+    // are deleted normally -- H2Stream::init() builds one per HTTP/2 stream to
+    // carry connection-level state into the SAF pipeline.
+    PR_ASSERT(connQueue == NULL);
 }
 
 PRStatus Connection::create(PRFileDesc* fd_, const PRNetAddr *addr, ListenSocket* ls_)
@@ -413,6 +432,36 @@ PRStatus Connection::create(PRFileDesc* fd_, const PRNetAddr *addr, ListenSocket
     fSSLEnabled = PR_FALSE;
     fUncleanShutdown = PR_FALSE;
     fKeepAliveReservation = PR_FALSE;
+    fEventDriven = PR_FALSE;
+    fEventTimedOut = PR_FALSE;
+    fHttp2 = PR_FALSE;
+    eventLoop = NULL;
+    eventHandler = NULL;
+    eventDeadline = 0;
+
+    // The event loop unlinks a connection from its timeout registry before
+    // releasing ownership, so a recycled Connection must arrive here already
+    // unlinked.  A stale link would mean the registry is still holding a
+    // pointer to a connection the acceptor has just handed to a new client.
+    PR_ASSERT(evNext == NULL && evPrev == NULL);
+    PR_ASSERT(!fInEventLoop);
+    evNext = NULL;
+    evPrev = NULL;
+    fInEventLoop = PR_FALSE;
+
+    // A recycled Connection must not inherit the previous connection's
+    // protocol state.  H2Session::discard() clears this on every HTTP/2
+    // teardown path, so a non-NULL value here would indicate a leak.
+    PR_ASSERT(h2Session == NULL);
+    h2Session = NULL;
+
+    // A connection only reaches the unused list from destroyNow(), which runs
+    // when the last dispatch reference has gone, so a recycled struct must
+    // arrive here with nothing outstanding.  A non-zero count would mean some
+    // path still believes it is holding this connection.
+    PR_ASSERT(dispatchRefs == 0 && !fClosePending);
+    dispatchRefs = 0;
+    fClosePending = PR_FALSE;
 
     // get a ListenSocketConfig reference
     lsConfig = ls_->getConfig();
@@ -455,6 +504,48 @@ PRStatus Connection::create(PRFileDesc* fd_, const PRNetAddr *addr, ListenSocket
 
 void Connection::destroy()
 {
+    // Take a reference of our own and drop it again, so that the decision to
+    // close is made by exactly one thread: whichever one takes the count to
+    // zero.  Testing the count and then closing would race an event-path
+    // reference being dropped in between -- both threads would see a reason not
+    // to close, and the connection would never be reclaimed.
+    //
+    // fClosePending is set while this thread's reference is held, so it is
+    // published before any other thread can observe the count reaching zero
+    // (PR_Atomic* are full barriers).
+    PR_AtomicIncrement(&dispatchRefs);
+    fClosePending = PR_TRUE;
+    releaseDispatch();
+}
+
+void Connection::retainDispatch()
+{
+    PR_AtomicIncrement(&dispatchRefs);
+}
+
+void Connection::releaseDispatch()
+{
+    if (PR_AtomicDecrement(&dispatchRefs) != 0)
+        return;
+
+    // Last one out.  fClosePending can only have been set, never cleared, while
+    // references were held, so at most one thread reaches destroyNow().
+    if (fClosePending) {
+        fClosePending = PR_FALSE;
+        destroyNow();
+    }
+}
+
+void Connection::destroyNow()
+{
+    // The HTTP/2 session goes with the socket, and for the same reason: a dispatch
+    // holding a reference may be inside it.  H2Session::closeConnection() decides the
+    // close but deliberately leaves the session alone, so freeing it is part of
+    // actually performing the close.  Before done() and PR_Close(), because deleting
+    // the session runs nghttp2's stream-close callbacks and they expect a live fd.
+    if (h2Session)
+        heliod::H2Session::discard(this);
+
     // No more HTTP-level traffic on the socket
     done();
 

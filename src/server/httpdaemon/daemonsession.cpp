@@ -54,6 +54,8 @@
 #endif
 
 #include "httpdaemon/daemonsession.h"
+#include "httpdaemon/EventLoop.h"
+#include "httpdaemon/H2Session.h"
 #include "httpdaemon/httprequest.h"
 #include "httpdaemon/dbthttpdaemon.h"
 #include "httpdaemon/connqueue.h"
@@ -363,8 +365,13 @@ DaemonSession::DaemonSession(ListenSocket* listenSocket) : Thread("DaemonSession
 
 DaemonSession::~DaemonSession(void)
 {
-    // Must be called before we blow away the HttpRequest
+    // Ensure session_destroy_thread uses this DaemonSession's storage and
+    // not a stale HttpRequest::CurrentRequest() that may be left behind by
+    // an HTTP/2 stream processing path.
+    HttpRequest *currentRequest = HttpRequest::CurrentRequest();
+    HttpRequest::SetCurrentRequest(request_);
     session_destroy_thread(NULL);
+    HttpRequest::SetCurrentRequest(currentRequest);
 
     delete request_;
     request_ = NULL;
@@ -469,6 +476,37 @@ DaemonSession::GetConnection(void)
             return PR_FALSE;
     }
 
+    return prepareConnection();
+}
+
+/* prepareConnection()
+ *
+ * Prepare the connection currently stored in this->conn for request
+ * processing.  This is shared by the blocking DaemonSession::run() loop
+ * and the event-driven processConnection() path.
+ */
+void
+DaemonSession::SetServerAddrFromConn(void)
+{
+    // Derive the server IP/port the same way prepareConnection() does, but
+    // without any of the connection setup (SSL, stats, initial read).  This is
+    // safe to call for the synthetic per-stream HTTP/2 connections, whose
+    // lsConfig and localAddress are copied from the real connection they
+    // arrived on.
+    ListenSocketConfig* lsc = conn->lsConfig;
+    if (lsc && lsc->hasExplicitIP()) {
+        serverIP = lsc->ip;
+    } else {
+        // Listening to INADDR_ANY: derive from the connection's local address.
+        net_addr_to_string(&conn->localAddress, serverIP_, sizeof(serverIP_));
+        serverIP = serverIP_;
+    }
+    serverPort = PR_ntohs(PR_NetAddrInetPort(&conn->localAddress));
+}
+
+PRBool
+DaemonSession::prepareConnection(void)
+{
     // Set flagNew if this is a newly accepted connection
     PRBool flagNew = (conn->fNewlyAccepted);
     conn->fNewlyAccepted = PR_FALSE;
@@ -477,15 +515,8 @@ DaemonSession::GetConnection(void)
     ListenSocketConfig* lsc = conn->lsConfig;
     PR_ASSERT(lsc);
 
-    // Get the server address
-    if (lsc->hasExplicitIP()) {
-        serverIP = lsc->ip;
-    } else {
-        // This LS is listening to INADDR_ANY
-        net_addr_to_string(&conn->localAddress, serverIP_, sizeof(serverIP_));
-        serverIP = serverIP_;
-    }
-    serverPort = PR_ntohs(PR_NetAddrInetPort(&conn->localAddress));
+    // Get the server address/port
+    SetServerAddrFromConn();
 
     // Track session statistics
     beginClient(&conn->remoteAddress);
@@ -504,7 +535,7 @@ DaemonSession::GetConnection(void)
             hello[1] >= 'A' && hello[1] <= 'Z' &&
             hello[2] >= 'A' && hello[2] <= 'Z')
         {
-            log_ereport(LOG_VERBOSE, 
+            log_ereport(LOG_VERBOSE,
                         "Received malformed SSL client hello from %s (Possible non-SSL request on SSL listener)",
                         conn->remoteIP.buf);
 
@@ -532,6 +563,29 @@ DaemonSession::GetConnection(void)
         memcpy(inbuf->inbuf, conn->async.inbuf.buf, conn->async.inbuf.cursize);
         inbuf->cursize = conn->async.inbuf.cursize;
         conn->async.inbuf.cursize = 0;
+    } else if (conn->fEventDriven && !conn->sslconfig) {
+        // Event-driven path: epoll already confirmed data is available, so
+        // try a non-blocking recv first.  This avoids blocking the worker
+        // thread on NSPR's internal poll() which can introduce delays under
+        // concurrent load.
+        //
+        // This fast path is restricted to plaintext connections. On an SSL
+        // socket, the first PR_Recv() also drives the TLS handshake, which
+        // can require additional network round trips the peer hasn't sent
+        // yet. NSS surfaces that condition on a PR_INTERVAL_NO_WAIT recv as
+        // PR_IO_TIMEOUT_ERROR (-5990), not PR_WOULD_BLOCK_ERROR, so the
+        // WOULD_BLOCK-triggered fallback below never ran and the connection
+        // was silently torn down mid-handshake (IO_TIMEOUT is a "quiet"
+        // close error below). Blocking recv with the full timeout drives
+        // the handshake correctly, as it always has for the blocking path.
+        inbuf->cursize = PR_Recv(conn->fd, (void *)(inbuf->inbuf),
+                                 inbuf->maxsize - 1, 0, PR_INTERVAL_NO_WAIT);
+        if (inbuf->cursize < 0 && PR_GetError() == PR_WOULD_BLOCK_ERROR) {
+            // Rare: epoll said data ready but NSPR disagrees.  Fall back to
+            // a blocking recv with the full timeout.
+            inbuf->cursize = PR_Recv(conn->fd, (void *)(inbuf->inbuf),
+                                     inbuf->maxsize - 1, 0, timeout);
+        }
     } else {
         inbuf->cursize = PR_Recv(conn->fd, (void *)(inbuf->inbuf),
                                  inbuf->maxsize - 1, 0, timeout);
@@ -542,11 +596,11 @@ DaemonSession::GetConnection(void)
         {
             int err = PR_GetError();
             INTnet_cancelIO(conn->fd);
-            if ((err != PR_IO_TIMEOUT_ERROR) && 
+            if ((err != PR_IO_TIMEOUT_ERROR) &&
                 (err != PR_CONNECT_RESET_ERROR) &&
                 (err != PR_END_OF_FILE_ERROR))
             {
-                log_ereport(LOG_FAILURE, 
+                log_ereport(LOG_FAILURE,
                             XP_GetAdminStr(DBT_DaemonSessionErrorRecvReq),
                             conn->remoteIP.buf, system_errmsg());
             }
@@ -554,7 +608,7 @@ DaemonSession::GetConnection(void)
         else
         {
             // inbuf->cursize == 0
-            // Normal EOF 
+            // Normal EOF
         }
         CloseConnection();
         return PR_FALSE;
@@ -564,7 +618,7 @@ DaemonSession::GetConnection(void)
     if (flagNew && !conn->sslconfig) {
         // Check whether the client mistakenly sent SSL to a non-SSL listener
         if (servssl_maybe_client_hello(inbuf->inbuf, inbuf->cursize)) {
-            log_ereport(LOG_VERBOSE, 
+            log_ereport(LOG_VERBOSE,
                         "Received unexpected SSL client hello from %s (Possible SSL request on non-SSL listener)",
                         conn->remoteIP.buf);
 
@@ -586,7 +640,7 @@ DaemonSession::GetConnection(void)
     return PR_TRUE;
 }
 
-void 
+void
 DaemonSession::run(void)
 {
     pool_ = pool_create();
@@ -621,70 +675,7 @@ DaemonSession::run(void)
 
         PR_ASSERT(pool_ == PR_GetThreadPrivate(getThreadMallocKey()));
 
-        //
-        // initialize the DeamonSession for request processing
-        //
-        if (!request_->StartSession(inbuf))
-            continue;
-
-        PR_AtomicIncrement(&nActiveSessions_);
-
-        //
-        // continue processing requests as long as KeepAlive is requested
-        // and data is available immediately
-        //
-        // if the client requests keepalive, but does not come up with data immediately,
-        // we give the connection to the keepalive subsystem and reuse the DaemonSession.
-        // when some data arrives later on, we'll get it back via GetConnection.
-        //
-        do {
-            PR_ASSERT(conn->fd != NULL);
-
-            if (inbuf->cursize <= 0)
-                break;
-
-            // Figure out how much longer we can wait for the request header
-            PRIntervalTime timeout = rqHdrTimeoutInterval_;
-            if (timeout != PR_INTERVAL_NO_TIMEOUT) {
-                PRIntervalTime elapsed = conn->elapsed();
-                if (timeout > elapsed) {
-                    timeout -= elapsed;
-                } else {
-                    timeout = 0;
-                }
-            }
-
-            // HttpRequest::HandleRequest will call RequestKeepAlive() to set
-            // conn->fKeepAlive as appropriate
-            PRBool fSocketOpen = request_->HandleRequest(inbuf, timeout);
-            if (fSocketOpen == PR_FALSE) {
-                conn->fd = NULL;
-                break;
-            }
-
-            if (!conn->fKeepAliveReservation)
-                break;
-
-            // HandleKeepAlive will set conn = NULL if it passes the
-            // Connection * to the keep-alive subsystem
-            if (!HandleKeepAlive())
-                break;
-
-        } while (WebServer::isTerminating() == PR_FALSE && Thread::wasTerminated() == PR_FALSE);
-
-        if (conn)
-            CloseConnection();
-
-        request_->EndSession();
-
-        /*
-         * After a session ends, everything acquired through MALLOC is
-         * released, including the input buffer.
-         */
-        inbuf = NULL;
-        pool_recycle(pool_, NULL);
-
-        PR_AtomicDecrement(&nActiveSessions_);
+        processOneConnection();
 
         PostThreads();
     }
@@ -702,6 +693,286 @@ DaemonSession::run(void)
 
     SafeLock guard(*sessionMgmtLock_);
     PR_AtomicDecrement(&nTotalSessions_);
+}
+
+/* processOneConnection()
+ *
+ * Process a single connection after it has been obtained. Used by both
+ * the blocking DaemonSession::run() loop and the event-driven
+ * processConnection() path.
+ */
+void
+DaemonSession::processOneConnection(void)
+{
+    //
+    // initialize the DeamonSession for request processing
+    //
+    if (!request_->StartSession(inbuf))
+        return;
+
+    PR_AtomicIncrement(&nActiveSessions_);
+
+    //
+    // continue processing requests as long as KeepAlive is requested
+    // and data is available immediately
+    //
+    // if the client requests keepalive, but does not come up with data immediately,
+    // we give the connection to the keepalive subsystem and reuse the DaemonSession.
+    // when some data arrives later on, we'll get it back via GetConnection.
+    //
+    PRBool fReturnToEventLoop = PR_FALSE;
+
+    do {
+        PR_ASSERT(conn->fd != NULL);
+
+        if (inbuf->cursize <= 0)
+            break;
+
+        // Figure out how much longer we can wait for the request header
+        PRIntervalTime timeout = rqHdrTimeoutInterval_;
+        if (timeout != PR_INTERVAL_NO_TIMEOUT) {
+            PRIntervalTime elapsed = conn->elapsed();
+            if (timeout > elapsed) {
+                timeout -= elapsed;
+            } else {
+                timeout = 0;
+            }
+        }
+
+        // HttpRequest::HandleRequest will call RequestKeepAlive() to set
+        // conn->fKeepAlive as appropriate
+        PRBool fSocketOpen = request_->HandleRequest(inbuf, timeout);
+        if (fSocketOpen == PR_FALSE) {
+            ereport(LOG_VERBOSE,
+                    "processOneConnection: HandleRequest returned socket closed, conn=%p",
+                    conn);
+            conn->fd = NULL;
+            break;
+        }
+
+        ereport(LOG_VERBOSE,
+                "processOneConnection: after HandleRequest conn=%p fKeepAliveReservation=%d fEventDriven=%d",
+                conn, conn->fKeepAliveReservation, conn->fEventDriven);
+
+        if (!conn->fKeepAliveReservation)
+            break;
+
+        // Event-driven connections are returned to the event loop after a
+        // single request instead of being handed to the blocking keep-alive
+        // subsystem. The fd must stay open and must not be recycled here;
+        // the caller (processConnection) re-registers it with the event
+        // loop once this function returns.
+        if (conn->fEventDriven) {
+            fReturnToEventLoop = PR_TRUE;
+            break;
+        }
+
+        // HandleKeepAlive will set conn = NULL if it passes the
+        // Connection * to the keep-alive subsystem
+        if (!HandleKeepAlive())
+            break;
+
+    } while (WebServer::isTerminating() == PR_FALSE && Thread::wasTerminated() == PR_FALSE);
+
+    ereport(LOG_VERBOSE,
+            "processOneConnection: exit loop conn=%p fReturnToEventLoop=%d fd=%p",
+            conn, fReturnToEventLoop, conn ? conn->fd : NULL);
+
+    if (conn && !fReturnToEventLoop)
+        CloseConnection();
+
+    request_->EndSession();
+
+    /*
+     * After a session ends, everything acquired through MALLOC is
+     * released, including the input buffer.
+     */
+    inbuf = NULL;
+    pool_recycle(pool_, NULL);
+
+    PR_AtomicDecrement(&nActiveSessions_);
+}
+
+/* Per-worker-thread persistent DaemonSession for the event-driven path.
+ *
+ * HttpRequest::StartSession() performs one-time thread-specific
+ * initialization (guarded by its myTpdIndex thread-private) that caches
+ * the HttpRequest pointer and its memory pool for the LIFETIME OF THE
+ * THREAD.  Creating a transient DaemonSession/HttpRequest per connection
+ * left that thread-private pointing at a deleted HttpRequest; the next
+ * HttpRequest on the same worker thread then skipped its initialization,
+ * ran HandleRequest() with an uninitialized pool, and crashed in
+ * pool_mark().  Each worker thread therefore reuses a single persistent
+ * DaemonSession, exactly like the blocking model's one-session-per-thread
+ * design.
+ */
+static PRUintn workerSessionIndex_;
+static PRCallOnceType workerSessionOnce_;
+
+static PRStatus initWorkerSessionIndex(void)
+{
+    return PR_NewThreadPrivateIndex(&workerSessionIndex_, NULL);
+}
+
+DaemonSession*
+DaemonSession::GetWorkerSession(void)
+{
+    if (PR_CallOnce(&workerSessionOnce_, initWorkerSessionIndex) != PR_SUCCESS)
+        return NULL;
+
+    DaemonSession* session =
+        (DaemonSession*)PR_GetThreadPrivate(workerSessionIndex_);
+    if (!session) {
+        session = new DaemonSession(NULL);
+        session->pool_ = pool_create();
+        PR_SetThreadPrivate(getThreadMallocKey(), session->pool_);
+        PR_SetThreadPrivate(workerSessionIndex_, session);
+    }
+    return session;
+}
+
+/* processConnection(Connection*)
+ *
+ * Static entry point for the event-driven I/O path. Processes a single
+ * connection on the calling thread without consuming a long-lived
+ * DaemonSession thread.
+ */
+void
+DaemonSession::processConnection(Connection* connection)
+{
+    if (!connection || !connection->fd)
+        return;
+
+    DaemonSession* sessionPtr = GetWorkerSession();
+    if (!sessionPtr)
+        return;
+    DaemonSession& session = *sessionPtr;
+    session.conn = connection;
+
+    // Reuse the input buffer left over from the previous connection, if
+    // any (mirrors DaemonSession::run()).
+    if (session.inbuf == NULL) {
+        session.inbuf = session.CreateInputBuffer();
+        if (session.inbuf == NULL) {
+            session.conn = NULL;
+            return;
+        }
+    }
+
+    // Reset the connection timestamp so that elapsed() measures from the
+    // moment data arrived (event dispatch) rather than from the original
+    // accept time.  Without this, connections that idle in epoll would have
+    // their request-header timeout budget consumed by the idle period.
+    if (StatsManager::isProfilingEnabled()) {
+        connection->ticks = PR_IntervalNow();
+    } else {
+        connection->ticks = ft_timeIntervalNow();
+    }
+
+    // Note: the event-dispatch path leaves the fd in whatever blocking mode
+    // the OS accepted it with (typically blocking, since PR_Accept inherits
+    // from the listen socket).  prepareConnection() uses PR_Recv with a
+    // timeout, which works correctly in both blocking and non-blocking modes
+    // under NSPR.
+
+    if (session.prepareConnection() == PR_FALSE) {
+        // prepareConnection() already closed the connection; keep the
+        // session, pool, and input buffer for the next connection on this
+        // thread (mirrors the failed-GetConnection path in run()).
+        //
+        // prepareConnection() has already called beginClient(), which puts this
+        // thread's stats slot in "request" mode.  The blocking model leaves a
+        // mode behind too, but its run() loop resets it to idle at the top of
+        // the next iteration; a worker-pool thread has no such loop, so every
+        // exit from here has to reset it by hand.  Otherwise the slot keeps the
+        // mode of the last request the thread served for as long as the thread
+        // lives, and perfdump reports the thread as a live session -- with a
+        // blank URI/VS/method/age, because endProcessing() clears those fields
+        // but not the mode.  Under the event model that shows up as a Sessions
+        // list full of half-empty rows and an inflated active-session count.
+        session.setMode(STATS_THREAD_IDLE);
+        session.conn = NULL;
+        return;
+    }
+
+    // Detect HTTP/2 by TLS ALPN or by the HTTP/2 connection preface in the
+    // already-read initial bytes.  The preface fallback is useful for testing
+    // before ALPN h2 selection is fully working.
+    static const char h2Preface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    const size_t h2PrefaceLen = sizeof(h2Preface) - 1;
+    PRBool isH2 = PR_FALSE;
+    if (connection->sslconfig != NULL) {
+        SSLNextProtoState npState;
+        unsigned char proto[16];
+        unsigned int protoLen = 0;
+        if (SSL_GetNextProto(connection->fd, &npState, proto, &protoLen,
+                             sizeof(proto)) == SECSuccess) {
+            if ((npState == SSL_NEXT_PROTO_NEGOTIATED ||
+                 npState == SSL_NEXT_PROTO_SELECTED) &&
+                protoLen == 2 && memcmp(proto, "h2", 2) == 0) {
+                isH2 = PR_TRUE;
+            }
+        }
+    }
+    if (!isH2 && session.inbuf != NULL &&
+        (unsigned int)session.inbuf->cursize >= 3 &&
+        memcmp(session.inbuf->inbuf, h2Preface, 3) == 0) {
+        isH2 = PR_TRUE;
+    }
+
+    ereport(LOG_VERBOSE,
+            "processConnection: inbuf cursize=%d isH2=%d",
+            session.inbuf ? session.inbuf->cursize : -1,
+            isH2);
+
+    if (isH2) {
+        // Hand the connection to a persistent H2Session owned by the
+        // Connection.  processConnection() consumes the pre-read bytes
+        // synchronously and then either parks the connection back in the
+        // event loop (releasing this worker while the client is idle) or
+        // tears it down.  Either way `connection` must not be dereferenced
+        // after this call: it may already have been closed and recycled.
+        heliod::H2Session::processConnection(
+            connection,
+            reinterpret_cast<const uint8_t*>(session.inbuf->inbuf),
+            session.inbuf->cursize);
+        // Release everything allocated for this connection (including the
+        // input buffer) but keep the persistent per-thread pool.
+        session.inbuf = NULL;
+        pool_recycle(session.pool_, NULL);
+        session.conn = NULL;
+        session.setMode(STATS_THREAD_IDLE);
+        session.flush();
+        return;
+    }
+
+    session.processOneConnection();
+
+    // After processOneConnection(), session.conn is NULL if the connection
+    // was closed (CloseConnection → destroy → AddUnused).  In that case the
+    // Connection object may already be recycled by the acceptor on another
+    // thread, so we must NOT dereference the original `connection` pointer.
+    // processOneConnection() already recycled the pool and cleared inbuf.
+    Connection* conn = session.conn;
+    session.conn = NULL;
+
+    // If the connection is still open and event-driven, return it to the
+    // event loop so the next request triggers another dispatch.
+    if (conn && conn->fd && conn->fEventDriven && conn->eventLoop) {
+        // Release the keep-alive reservation flag before re-registering;
+        // the event loop manages idle-timeout independently and destroy()
+        // asserts !fKeepAliveReservation.
+        conn->fKeepAliveReservation = PR_FALSE;
+        conn->fNewlyAccepted = PR_FALSE;
+
+        conn->eventLoop->addConnection(conn, conn->eventHandler);
+    }
+
+    // This worker is about to go back to waiting for the next item on the queue;
+    // its stats slot must say so.  See the comment at the prepareConnection()
+    // failure above for why the event path has to do this at every exit.
+    session.setMode(STATS_THREAD_IDLE);
+    session.flush();
 }
 
 DaemonSession*
@@ -861,7 +1132,13 @@ DaemonSession::HandleKeepAlive(void)
 PRBool
 DaemonSession::RequestKeepAlive(PRBool fKeepAlive)
 {
-    if (pollManager_) {
+    if (conn->fEventDriven) {
+        // Event-driven connections do not use the blocking keep-alive poll
+        // subsystem; their idle-wait is handled by the event loop. Grant or
+        // revoke the reservation directly without consuming a slot from the
+        // shared PollManager reservation pool.
+        conn->fKeepAliveReservation = fKeepAlive;
+    } else if (pollManager_) {
         if (fKeepAlive) {
             if (!conn->fKeepAliveReservation) {
                 // Ask keep-alive subsystem for a keep-alive "reservation"
@@ -1111,6 +1388,12 @@ PRInt32
 DaemonSession::GetMaxSessions(void)
 {
     return nMaxSessions_;
+}
+
+PRInt32
+DaemonSession::GetMinSessions(void)
+{
+    return nMinSessions_;
 }
 
 PRInt32

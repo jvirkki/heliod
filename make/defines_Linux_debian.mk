@@ -37,10 +37,18 @@ include ${BUILD_ROOT}/make/defines_Linux.mk
 
 LDAPSDK_VERSION=6_0_5
 
+# NSS 3.120 (the Debian system package) has a bug in SSL_ReconfigFD() that
+# drops the ALPN next-protocol callback/list when reconfiguring a live
+# socket (fixed upstream in NSS 3.123). SBC ships NSS 3.127, so link
+# against it instead of the system NSS. The system headers remain ABI/API
+# compatible for the ssl.h/sslerr.h surface this codebase uses, and the SBC
+# 3.127 include tree is not directly usable (it ships a bundled dirent.h
+# shim that collides with the system one), so keep NSS_INC pointing at the
+# system headers.
 NSPR_INC=-I/usr/include/nspr
 NSPR_LIBDIR=
 NSS_INC=-I/usr/include/nss
-NSS_LIBDIR=/usr/lib/nss
+NSS_LIBDIR=/opt/heliod-sbc/nss/3.127/lib
 LDAPSDK_INC=-I$(SBC)/ldapsdk/work/mozldap-$(subst _,.,$(LDAPSDK_VERSION))/mozilla/dist/public/ldap -I$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/include
 LDAPSDK_LIBDIR=$(SBC)/ldapsdk/$(LDAPSDK_VERSION)/$(OBJDIR)/lib
 ZLIB_INC=

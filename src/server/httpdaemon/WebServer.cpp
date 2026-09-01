@@ -106,6 +106,8 @@
 #include "xalanc/XPath/XPathEvaluator.hpp"
 #include "httpdaemon/ListenSocket.h"            // ListenSocket class
 #include "httpdaemon/ListenSockets.h"           // ListenSockets class
+#include "httpdaemon/EventDispatcher.h"         // EventDispatcher class
+#include "httpdaemon/H2Session.h"               // H2Session::initConfig()
 #include "httpdaemon/throttling.h"
 #ifdef XP_UNIX
 #include "base/unix_utils.h"                    // max_fdset/redirectStdStreams
@@ -1739,6 +1741,38 @@ WebServer::Run()
         return PR_FAILURE;
     }
 
+    // Start the global event dispatcher if any listener requests the
+    // event-driven I/O model, or if the environment overrides the decision.
+    PRBool startEventDispatcher = httpdaemon_use_event_model();
+    if (!startEventDispatcher && configuration) {
+        for (int i = 0; i < configuration->getLscCount(); i++) {
+            const ListenSocketConfig* lsc = configuration->getLsc(i);
+            if (lsc && lsc->ioModel.getEnumValue() ==
+                       ServerXMLSchema::IoModel::IOMODEL_EVENT) {
+                startEventDispatcher = PR_TRUE;
+                break;
+            }
+        }
+    }
+    if (startEventDispatcher) {
+        // Size the event worker pool the way the blocking DaemonSession pool is
+        // sized: start at min-threads and let it grow to max-threads on demand.
+        PRUint32 maxWorkers = DaemonSession::GetMaxSessions() > 0
+                                  ? (PRUint32)DaemonSession::GetMaxSessions()
+                                  : 64;
+        PRInt32 minSessions = DaemonSession::GetMinSessions();
+        PRUint32 minWorkers = (minSessions > 0) ? (PRUint32)minSessions : 1;
+        if (minWorkers > maxWorkers)
+            minWorkers = maxWorkers;
+        globalEventDispatcher = new EventDispatcher(minWorkers, maxWorkers);
+        if (globalEventDispatcher->start() != PR_SUCCESS) {
+            ereport(LOG_FAILURE, "Failed to start event dispatcher");
+            delete globalEventDispatcher;
+            globalEventDispatcher = NULL;
+            return PR_FAILURE;
+        }
+    }
+
     // Register the ListenSockets instance with the ConfigurationManager so
     // that it is notified when new Configurations are installed.  We want to
     // be registered last to ensure we don't close a listen socket only to have
@@ -1756,6 +1790,11 @@ WebServer::Run()
 
     LogManager::initLate();
     route_init_late();
+
+    // Read the HTTP/2 directives before the accounting below looks at which
+    // directives went unread; they are otherwise read on the first HTTP/2
+    // connection and wrongly reported as ignored.
+    heliod::H2Session::initConfig();
 
     // Warn about unaccessed and duplicate magnus.conf directives
     conf_warnunaccessed();
@@ -1871,6 +1910,12 @@ WebServer::Run()
 
     // TERMINATION TIME
     // we're on our way out now....
+
+    // Shut down the event-driven path before terminating blocking sessions.
+    if (globalEventDispatcher) {
+        delete globalEventDispatcher;
+        globalEventDispatcher = NULL;
+    }
 
     DaemonSession::Terminate();
 

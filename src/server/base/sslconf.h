@@ -94,17 +94,27 @@ class SSLSocketConfiguration : public ServerXMLSchema::SslWrapper, public Config
         PRBool CheckCertHosts(VirtualServer* vs, ListenSocketConfig* ls) const;
         const char* GetCommonName() const;
 
+        // ALPN and SNI callback dispatchers
+        static SECStatus alpnCallback(void* arg,
+                                      PRFileDesc* fd,
+                                      const unsigned char* protos,
+                                      unsigned int protosLen,
+                                      unsigned char* protoOut,
+                                      unsigned int* protoOutLen,
+                                      unsigned int protoMaxOut);
+        static PRInt32 sniCallback(PRFileDesc* fd,
+                                   const SECItem* srvNameArr,
+                                   PRUint32 srvNameArrSize,
+                                   void* arg);
+
+        // Select a server certificate whose subject matches the given
+        // hostname. Returns the cert index in [0, servercertCount), or -1
+        // if no match. The caller falls back to index 0 on -1.
+        int findCertForHostname(const char* hostname) const;
+
     private:
         // assignment operator is undefined
         SSLSocketConfiguration& operator=(const SSLSocketConfiguration&);
-
-        // for caching, so that we don't have to look up the ciphers,
-        // cert & key again when SSL is enabled on a socket
-        int servercertCount;
-        const char * servercertNickname[MAX_SERVER_CERTS];
-        CERTCertificate * servercert[MAX_SERVER_CERTS];
-        SECKEYPrivateKey * serverkey[MAX_SERVER_CERTS];
-        SSLKEAType serverKEAType[MAX_SERVER_CERTS];
 
         // this fd is used as a model to set SSL parameters on another socket
         PRFileDesc* model;
@@ -113,13 +123,20 @@ class SSLSocketConfiguration : public ServerXMLSchema::SslWrapper, public Config
         int rsa_ciphers;
         int ecc_ciphers;
         int export_ciphers;
-        int unknown_ciphers;
         int rsa_certs;
         int ecc_certs;
+        int unknown_ciphers;
 
-        // track how many ciphers for SSLv2 vs. SSLv3/TLS
-        int ssl2_ciphers;
+        // track how many SSLv3/TLS ciphers are enabled
         int ssl3tls_ciphers;
+
+        // for caching, so that we don't have to look up the ciphers,
+        // cert & key again when SSL is enabled on a socket
+        int servercertCount;
+        const char * servercertNickname[MAX_SERVER_CERTS];
+        CERTCertificate * servercert[MAX_SERVER_CERTS];
+        SECKEYPrivateKey * serverkey[MAX_SERVER_CERTS];
+        SSLKEAType serverKEAType[MAX_SERVER_CERTS];
 
         // track ciphers explicitly enabled/disabled
         GenericVector enabledList;
@@ -131,7 +148,7 @@ class SSLSocketConfiguration : public ServerXMLSchema::SslWrapper, public Config
                       ServerXMLSchema::Pkcs11& pkcs11);
         void set_cert_and_key(ServerXMLSchema::Ssl& config);
         void set_cipher(PRInt32 cipher, const char *cipherName,
-                                              const ServerXMLSchema::Bool& on);
+                                              PRBool on);
         void set_ciphers();
         PRBool check_bypass() const;
 };

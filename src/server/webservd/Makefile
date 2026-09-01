@@ -118,6 +118,16 @@ DLL_LIBS+=nsfc nstp nstime support nsprwrap xp
 DLL_LIBS+=libcrypt :libcrypt.so.1 libsi18n httpparser sed
 DLL_LIBS+=$(ARES_LIB)
 DLL_LIBS+=$(Z_LIB)
+# Link the daemon DLL against the libraries its own code uses, so they are
+# recorded as NEEDED in libns-httpd40.so (like $(Z_LIB) above) rather than
+# back-filled at the webservd exe link.  nghttp2: HTTP/2 framing/HPACK
+# (httpdaemon/H2Session).  brotlienc + brotlicommon: Brotli content-coding; zstd:
+# Zstandard content-coding (both safs/httpcompression).  The DLL's own objects
+# reference these, so they resolve cleanly here with no link-order or --as-needed
+# fragility.
+DLL_LIBS+=nghttp2
+DLL_LIBS+=brotlienc brotlicommon
+DLL_LIBS+=zstd
 DLL_LIBS+=$(PCRE_LIB)
 DLL_LIBS+=serverxml
 DLL_LIBS+=ServerXMLSchema
@@ -212,6 +222,9 @@ else
 # unix
 EXE_OBJS=main
 EXE_LIBS+=nsprwrap
+
+# nghttp2 (HTTP/2) and brotli (content-coding) are linked into libns-httpd40.so
+# as NEEDED via DLL_LIBS above, so the webservd exe needs nothing extra for them.
 
 ifeq ($(OS_ARCH), HP-UX)
 # Added Jan26 for Java problem.

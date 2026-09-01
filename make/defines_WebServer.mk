@@ -42,7 +42,7 @@ BRAND_NAME = "heliod"
 # so be sure to update version there as well whenever changing these.
 
 VER_MAJOR=0
-VER_MINOR=4
+VER_MINOR=5
 
 MAJOR_VERSION="$(VER_MAJOR)"
 MINOR_VERSION="$(VER_MINOR)"

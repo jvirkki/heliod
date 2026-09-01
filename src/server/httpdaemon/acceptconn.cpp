@@ -40,6 +40,7 @@
 #include "httpdaemon/ListenSocket.h" // ListenSocket class
 #include "httpdaemon/connqueue.h"    // ConnectionQueue class
 #include "httpdaemon/acceptconn.h"   // Acceptor class
+#include "httpdaemon/EventDispatcher.h" // EventDispatcher class
 #include "httpdaemon/dbthttpdaemon.h"
 
 
@@ -131,6 +132,26 @@ Acceptor::run(void)
             PR_Close(socketAccept);
             _connQ->AddUnused(conn);
             continue;
+        }
+
+        // Route to the event-driven path when both the listener and the global
+        // dispatcher are configured for it. Otherwise fall back to the legacy
+        // blocking connection queue.
+        PRBool useEventModel = (globalEventDispatcher &&
+                                globalEventDispatcher->isStarted() &&
+                                _listenSocket->getConfig()->ioModel.getEnumValue() ==
+                                ServerXMLSchema::IoModel::IOMODEL_EVENT);
+        if (useEventModel) {
+            ereport(LOG_VERBOSE,
+                    "Acceptor: accepted conn=%p fd=%p useEventModel=1",
+                    conn, conn->fd);
+            if (globalEventDispatcher->addConnection(conn) == PR_SUCCESS) {
+                continue;
+            }
+            ereport(LOG_FAILURE,
+                    "Acceptor: addConnection failed for conn=%p fd=%p",
+                    conn, conn->fd);
+            // Fall through to the legacy queue on failure.
         }
 
         if (_connQ->AddReady(conn) != PR_SUCCESS) {

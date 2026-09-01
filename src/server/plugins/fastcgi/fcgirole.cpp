@@ -88,6 +88,18 @@ resendresponder:
     PRBool done = PR_FALSE;
     PRBool flagWaitingForResponse = PR_TRUE;
 
+    // The client endpoint may be an HTTP/2 stream socket: a synthetic NSPR
+    // descriptor with no underlying OS file descriptor.  PR_Poll() cannot poll
+    // such a descriptor -- it reports PR_POLL_NVAL for it -- which would make
+    // every PR_Poll() below return immediately and spin this loop at 100% CPU
+    // while it waits for the FastCGI server's response.  When we detect that,
+    // we stop polling the client and service it synchronously instead: its
+    // readiness is always known without polling (the whole request body is
+    // buffered before an H2 stream is dispatched, and response writes go into a
+    // ring buffer), so we only need to block in PR_Poll() on the real server
+    // socket.
+    PRBool clientPollable = PR_TRUE;
+
     for (;;) {
         EndPoint *endpoints[2];
         PRPollDesc pd[2];
@@ -99,9 +111,18 @@ resendresponder:
             goto responderSendData;
         }
 
+        // If the client cannot be polled, read any buffered request body
+        // synchronously (there is nothing to wake us for) before we block on
+        // the server.
+        if (!clientPollable && clientRead) {
+            int res = client.recv();
+            if (res > 0)
+                cl -= res;
+        }
+
         // Figure out which endpoints we're waiting for
         if (server.add(&pd[pc])) endpoints[pc++] = &server;
-        if (client.add(&pd[pc])) endpoints[pc++] = &client;
+        if (clientPollable && client.add(&pd[pc])) endpoints[pc++] = &client;
 
         if (!pc) {
             // No endpoints to wait for
@@ -153,6 +174,17 @@ resendresponder:
             }
 
             break;
+        }
+
+        // A synthetic client socket (HTTP/2 stream) has no OS descriptor, so
+        // PR_Poll() flags it PR_POLL_NVAL rather than blocking on it.  Detect
+        // that once and thereafter poll only the (real) server socket, driving
+        // the client synchronously; otherwise this loop spins.
+        for (i = 0; i < pc; i++) {
+            if (endpoints[i]->isClient &&
+                (pd[i].out_flags & (PR_POLL_NVAL | PR_POLL_ERR))) {
+                clientPollable = PR_FALSE;
+            }
         }
 
         // Get new data

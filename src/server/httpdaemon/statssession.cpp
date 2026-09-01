@@ -182,7 +182,7 @@ void StatsSession::beginRequest()
 // StatsSession::beginProcessing
 //-----------------------------------------------------------------------------
 
-void StatsSession::beginProcessing(const VirtualServer* vs, const HHString& method, const HHString& uri)
+void StatsSession::beginProcessing(const VirtualServer* vs, const HHString& method, const HHString& uri, const char* protocol)
 {
     if (!StatsManager::isInitialized()) return;
 
@@ -206,6 +206,14 @@ void StatsSession::beginProcessing(const VirtualServer* vs, const HHString& meth
     thread->threadStats.requestBucket.method[methodlen] = '\0';
     memcpy(thread->threadStats.requestBucket.uri, uri.ptr, urilen);
     thread->threadStats.requestBucket.uri[urilen] = '\0';
+    if (protocol && protocol[0]) {
+        int plen = minimum((int)strlen(protocol),
+                           (int)sizeof(thread->threadStats.requestBucket.protocol) - 1);
+        memcpy(thread->threadStats.requestBucket.protocol, protocol, plen);
+        thread->threadStats.requestBucket.protocol[plen] = '\0';
+    } else {
+        thread->threadStats.requestBucket.protocol[0] = '\0';
+    }
     thread->unlock();
 
     // Get a StatsCacheEntry for this VS.  We will buffer VS-specific stats
@@ -255,6 +263,7 @@ void StatsSession::endProcessing(const VirtualServer* vs, int statusHttp, PRInt6
     thread->threadStats.vsId[0] = '\0';
     thread->threadStats.requestBucket.method[0] = '\0';
     thread->threadStats.requestBucket.uri[0] = '\0';
+    thread->threadStats.requestBucket.protocol[0] = '\0';
     thread->threadStats.timeRequestStarted = 0;
     thread->unlock();
 
@@ -281,6 +290,7 @@ void StatsSession::abortProcessing(const VirtualServer* vs)
     thread->threadStats.vsId[0] = '\0';
     thread->threadStats.requestBucket.method[0] = '\0';
     thread->threadStats.requestBucket.uri[0] = '\0';
+    thread->threadStats.requestBucket.protocol[0] = '\0';
     thread->threadStats.timeRequestStarted = 0;
     thread->unlock();
 }

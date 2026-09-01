@@ -51,6 +51,8 @@
 #include "safs/httpcompression.h"
 #include "safs/dbtsafs.h"
 #include "zlib.h"
+#include <brotli/encode.h> /* Brotli content-coding (br) */
+#include <zstd.h>          /* Zstandard content-coding (zstd) */
 #include "safs/nsfcsafs.h" /* GetServerFileCache */
 #include "support/SimpleHash.h" 
 #include <limits.h> /* INT_MAX */ 
@@ -65,6 +67,19 @@ const int HTTP_COMPRESSION_DEFAULT_FRAGMENT_SIZE = 8192; // fragment-size
 const int HTTP_COMPRESSION_DEFAULT_COMPRESSION_LEVEL = 6; // compression-level
 const int HTTP_COMPRESSION_DEFAULT_WINDOW_SIZE = 15; // window-size
 const int HTTP_COMPRESSION_DEFAULT_MEMORY_LEVEL = 8; // memory-level
+
+/* Brotli (br) defaults for the dynamic http-compression filter.  Quality is on
+ * Brotli's own 0..11 scale, unrelated to zlib's 1..9, so gzip's compression-level
+ * does not carry over.  5 is the usual choice for on-the-fly compression: close
+ * to gzip's speed with a better ratio, where 10-11 are far slower and meant for
+ * precompressed static assets.  lgwin 22 is Brotli's default window. */
+const int HTTP_COMPRESSION_DEFAULT_BROTLI_QUALITY = 5; // brotli-quality (0..11)
+const int HTTP_COMPRESSION_DEFAULT_BROTLI_LGWIN = 22;  // brotli window (10..24)
+
+/* Zstandard (zstd) default for the dynamic http-compression filter.  Level is on
+ * zstd's own scale; 3 is the library default and a good speed/ratio balance for
+ * on-the-fly compression (higher levels are for precompressed assets). */
+const int HTTP_COMPRESSION_DEFAULT_ZSTD_LEVEL = 3; // zstd-level (1..22)
 
 /* compress-file default values */
 const int COMPRESS_FILE_DEFAULT_MIN_SIZE = 256; // min-size
@@ -92,7 +107,14 @@ static SimpleStringHash *_hash = NULL;
  * filter method calls because filter methods are called in callback mode.
  */
 
+/* Which content-coding this filter instance is producing.  gzip is the original
+ * path and is left exactly as it was; br and zstd are the added paths. */
+enum CompCoding { COMP_GZIP, COMP_BROTLI, COMP_ZSTD };
+
 typedef struct HttpCompressionData {
+
+    /* which coding this instance emits */
+    CompCoding coding;
 
     /* output buffer */
     unsigned char *outbuf;
@@ -100,11 +122,17 @@ typedef struct HttpCompressionData {
     /* output buffer size (fragment size) */
     int outbufSize;
 
-    /* zstream used by zlib */
+    /* zstream used by zlib (gzip only; NULL for br) */
     z_stream *zstream;
 
-    /* crc */
+    /* crc (gzip only) */
     unsigned long crc;
+
+    /* Brotli encoder state (br only; NULL otherwise) */
+    BrotliEncoderState *brotli;
+
+    /* Zstandard encoder state (zstd only; NULL otherwise) */
+    ZSTD_CCtx *zstd;
 
 } HttpCompressionData;
 
@@ -167,6 +195,171 @@ static PRBool parseAcceptEncodingHdr(char *acceptencoding, const char **codingto
     }
 
     return PR_FALSE;
+}
+
+/*
+ * Content-coding negotiation for the dynamic http-compression filter.
+ *
+ * parseAcceptEncodingHdr() above only knows gzip and is used unchanged by the
+ * precompressed-.gz SAFs (find-compressed / compress-file), which have no Brotli
+ * equivalent.  This variant additionally offers Brotli.  It picks the acceptable
+ * coding with the highest q-value; on a tie it prefers br over gzip, because br
+ * compresses text better at comparable cost, which is also what current browsers
+ * signal (they list br) and what other servers do.  gzip is still chosen whenever
+ * the client offers only gzip, so the existing behaviour is unchanged for those
+ * clients.  Returns "br", "gzip", "x-gzip", or NULL if nothing we produce is
+ * acceptable.  q-values are compared on util_qtoi()'s integer scale, exactly as
+ * the gzip-only parser does.
+ */
+static const char *chooseContentCoding(char *acceptencoding)
+{
+    char *token, *lasts;
+    int brq = -1, zstdq = -1, gzipq = -1, xgzipq = -1, identq = -1, starq = -1;
+
+    token = util_strtok(acceptencoding, ",", &lasts);
+    while (token) {
+        while (isspace(*token))
+            token++;
+        const char *ptr = token;
+        while (*ptr && !isspace(*ptr) && *ptr != ';')
+            ptr++;
+        int len = ptr - token;
+        int qvalue = util_qtoi(ptr, &ptr);
+
+        /* "zstd" and "gzip" are both length 4, so match on content, not length. */
+        if (len == 2 && !strncasecmp(token, "br", 2))
+            brq = qvalue;
+        else if (len == 4 && !strncasecmp(token, "zstd", 4))
+            zstdq = qvalue;
+        else if (len == 4 && !strncasecmp(token, "gzip", 4))
+            gzipq = qvalue;
+        else if (len == 6 && !strncasecmp(token, "x-gzip", 6))
+            xgzipq = qvalue;
+        else if (len == 8 && !strncasecmp(token, "identity", 8))
+            identq = qvalue;
+        else if (len == 1 && *token == '*')
+            starq = qvalue;
+
+        token = util_strtok(NULL, ",", &lasts);
+    }
+
+    /* A coding not named explicitly inherits the "*" q-value if one was given. */
+    int qBr = (brq != -1) ? brq : starq;
+    int qZstd = (zstdq != -1) ? zstdq : starq;
+
+    /* gzip and x-gzip are the same coding; take whichever q is higher and keep
+     * the token the client used so the Content-Encoding we echo matches. */
+    const char *gzName = "gzip";
+    int qGz = gzipq;
+    if (xgzipq > qGz) { qGz = xgzipq; gzName = "x-gzip"; }
+    if (qGz == -1) qGz = starq;    /* neither named -> inherit "*" */
+
+    /* identity's effective q; -1 (unmentioned, no "*") never blocks a coding. */
+    int qId = (identq != -1) ? identq : starq;
+
+    /* Highest q wins.  The check order encodes the tie-break preference (a later
+     * check with ">= bestq" beats an equal earlier one): gzip, then zstd, then
+     * br -- i.e. br > zstd > gzip when the client rates them equally.  A client
+     * that prefers otherwise says so with q-values, which are honoured strictly. */
+    const char *best = NULL;
+    int bestq = 0;
+    if (qGz   > 0 && qGz   >= qId && qGz   >= bestq) { best = gzName; bestq = qGz; }
+    if (qZstd > 0 && qZstd >= qId && qZstd >= bestq) { best = "zstd"; bestq = qZstd; }
+    if (qBr   > 0 && qBr   >= qId && qBr   >= bestq) { best = "br";   bestq = qBr; }
+
+    return best;
+}
+
+/*
+ * Feed `amount` bytes of `inbuf` to the Brotli encoder with operation `op`
+ * (PROCESS for a normal write, FLUSH for a flush, FINISH to close), draining all
+ * output to the layer below.  Returns `amount` on success or IO_ERROR.  Unlike
+ * gzip there is no manual header/CRC/trailer: a Brotli stream is self-contained.
+ */
+static int brotli_run(FilterLayer *layer, HttpCompressionData *data,
+                      BrotliEncoderOperation op,
+                      const unsigned char *inbuf, int amount)
+{
+    size_t avail_in = (amount > 0) ? (size_t)amount : 0;
+    const uint8_t *next_in = inbuf;
+
+    for (;;) {
+        size_t avail_out = data->outbufSize;
+        uint8_t *next_out = data->outbuf;
+
+        if (!BrotliEncoderCompressStream(data->brotli, op,
+                                         &avail_in, &next_in,
+                                         &avail_out, &next_out, NULL)) {
+            log_error(LOG_FAILURE, "http-compression",
+                      layer->context->sn, layer->context->rq,
+                      "Brotli encoder error");
+            return IO_ERROR;
+        }
+
+        size_t produced = (size_t)data->outbufSize - avail_out;
+        if (produced > 0) {
+            int rv = net_write(layer->lower, data->outbuf, (int)produced);
+            if (rv != (int)produced)
+                return IO_ERROR;
+        }
+
+        /* Done when the input is consumed and the encoder has nothing buffered;
+         * for FINISH, that coincides with the stream being finished. */
+        PRBool done = (op == BROTLI_OPERATION_FINISH)
+                          ? (BrotliEncoderIsFinished(data->brotli) ? PR_TRUE : PR_FALSE)
+                          : ((avail_in == 0 &&
+                              !BrotliEncoderHasMoreOutput(data->brotli))
+                                 ? PR_TRUE : PR_FALSE);
+        if (done)
+            break;
+    }
+
+    return amount;
+}
+
+/*
+ * Feed `amount` bytes of `inbuf` to the Zstandard encoder with end-directive
+ * `endOp` (ZSTD_e_continue for a normal write, ZSTD_e_flush for a flush,
+ * ZSTD_e_end to close), draining all output to the layer below.  Returns
+ * `amount` on success or IO_ERROR.  Like Brotli, a zstd frame is self-contained.
+ */
+static int zstd_run(FilterLayer *layer, HttpCompressionData *data,
+                    ZSTD_EndDirective endOp,
+                    const unsigned char *inbuf, int amount)
+{
+    ZSTD_inBuffer in;
+    in.src = inbuf;
+    in.size = (amount > 0) ? (size_t)amount : 0;
+    in.pos = 0;
+
+    for (;;) {
+        ZSTD_outBuffer out;
+        out.dst = data->outbuf;
+        out.size = (size_t)data->outbufSize;
+        out.pos = 0;
+
+        size_t rem = ZSTD_compressStream2(data->zstd, &out, &in, endOp);
+        if (ZSTD_isError(rem)) {
+            log_error(LOG_FAILURE, "http-compression",
+                      layer->context->sn, layer->context->rq,
+                      "zstd encoder error: %s", ZSTD_getErrorName(rem));
+            return IO_ERROR;
+        }
+
+        if (out.pos > 0) {
+            int rv = net_write(layer->lower, data->outbuf, (int)out.pos);
+            if (rv != (int)out.pos)
+                return IO_ERROR;
+        }
+
+        /* rem == 0 means the current directive is fully flushed; combined with
+         * all input consumed, there is nothing left to do for this call.  (For
+         * ZSTD_e_end, rem == 0 also means the frame is complete.) */
+        if (in.pos == in.size && rem == 0)
+            break;
+    }
+
+    return amount;
 }
 
 /* ----------------------- find_compressed --------------------- */
@@ -317,6 +510,13 @@ int http_compression_insert(FilterLayer *layer, pblock *pb)
      */
     data = (HttpCompressionData *) MALLOC(sizeof(HttpCompressionData));
 
+    /* Both encoder handles start NULL so the remove path frees only what an
+     * early return actually initialized. */
+    data->coding = COMP_GZIP;
+    data->zstream = NULL;
+    data->brotli = NULL;
+    data->zstd = NULL;
+
     /* Get the parameters passed in insert-filter and validate them */
     vary = pblock_findval("vary", pb);
     if (vary) {
@@ -419,15 +619,22 @@ int http_compression_insert(FilterLayer *layer, pblock *pb)
     }
 
     acceptencoding = STRDUP(acceptencoding);
-    int retval = parseAcceptEncodingHdr(acceptencoding, &newcontentcoding);
+    const char *chosen = chooseContentCoding(acceptencoding);
     FREE(acceptencoding);
 
-    if ( retval == PR_FALSE ) {
-        /* Client won't be able to receive encoded content.
+    if ( chosen == NULL ) {
+        /* Client won't be able to receive any coding we produce.
          * So don't insert filter.
          */
         return REQ_NOACTION;
     }
+    newcontentcoding = chosen;
+    if (!strcasecmp(chosen, "br"))
+        data->coding = COMP_BROTLI;
+    else if (!strcasecmp(chosen, "zstd"))
+        data->coding = COMP_ZSTD;
+    else
+        data->coding = COMP_GZIP;
 
     const char *contentcoding = pblock_findval("content-encoding", layer->context->rq->srvhdrs);
     if (contentcoding) {
@@ -460,6 +667,40 @@ int http_compression_insert(FilterLayer *layer, pblock *pb)
     /* Allocate memory for the output buffer */
     data->outbuf = (unsigned char *) MALLOC(data->outbufSize*sizeof(unsigned char));
 
+    if (data->coding == COMP_BROTLI) {
+        /* Initialize the Brotli encoder.  The window-size/memory-level knobs are
+         * zlib-specific and do not apply; quality is on Brotli's own scale. */
+        data->brotli = BrotliEncoderCreateInstance(NULL, NULL, NULL);
+        if (!data->brotli) {
+            log_error(LOG_FAILURE, "http-compression-insert",
+                      layer->context->sn, layer->context->rq,
+                      "Brotli encoder init failed");
+            return REQ_ABORTED;
+        }
+        BrotliEncoderSetParameter(data->brotli, BROTLI_PARAM_QUALITY,
+                                  HTTP_COMPRESSION_DEFAULT_BROTLI_QUALITY);
+        BrotliEncoderSetParameter(data->brotli, BROTLI_PARAM_LGWIN,
+                                  HTTP_COMPRESSION_DEFAULT_BROTLI_LGWIN);
+        /* No framing to pre-write: a Brotli stream is self-contained.  The whole
+         * output buffer is available to the encoder from the first write. */
+        return REQ_PROCEED;
+    }
+
+    if (data->coding == COMP_ZSTD) {
+        /* Initialize the Zstandard encoder.  Like Brotli, the window/memory knobs
+         * are zlib-specific and do not apply; level is on zstd's own scale. */
+        data->zstd = ZSTD_createCCtx();
+        if (!data->zstd) {
+            log_error(LOG_FAILURE, "http-compression-insert",
+                      layer->context->sn, layer->context->rq,
+                      "zstd encoder init failed");
+            return REQ_ABORTED;
+        }
+        ZSTD_CCtx_setParameter(data->zstd, ZSTD_c_compressionLevel,
+                               HTTP_COMPRESSION_DEFAULT_ZSTD_LEVEL);
+        return REQ_PROCEED;
+    }
+
     /* Initialize zlib */
     int zrv;
     data->zstream = (z_stream *) MALLOC(sizeof(z_stream));
@@ -472,7 +713,7 @@ int http_compression_insert(FilterLayer *layer, pblock *pb)
 
     if ( zrv != Z_OK ) {
         log_error(LOG_FAILURE, "http-compression-insert",
-                  layer->context->sn, layer->context->rq, 
+                  layer->context->sn, layer->context->rq,
                   XP_GetAdminStr(DBT_zlibInitFailure),
                   zrv);
         return REQ_ABORTED;
@@ -507,6 +748,15 @@ int http_compression_write(FilterLayer *layer, const void *buf, int amount)
     z_stream *zstream;
 
     data = (HttpCompressionData *) layer->context->data;
+
+    if (data->coding == COMP_BROTLI)
+        return brotli_run(layer, data, BROTLI_OPERATION_PROCESS,
+                          (const unsigned char *)buf, amount);
+
+    if (data->coding == COMP_ZSTD)
+        return zstd_run(layer, data, ZSTD_e_continue,
+                        (const unsigned char *)buf, amount);
+
     zstream = data->zstream;
 
     /* dangerous, but no other way */
@@ -556,6 +806,21 @@ int http_compression_flush(FilterLayer *layer)
     int len;
 
     data = (HttpCompressionData *) layer->context->data;
+
+    if (data->coding == COMP_BROTLI) {
+        int rv = brotli_run(layer, data, BROTLI_OPERATION_FLUSH, NULL, 0);
+        if (rv == IO_ERROR)
+            return IO_ERROR;
+        return net_flush(layer->lower);
+    }
+
+    if (data->coding == COMP_ZSTD) {
+        int rv = zstd_run(layer, data, ZSTD_e_flush, NULL, 0);
+        if (rv == IO_ERROR)
+            return IO_ERROR;
+        return net_flush(layer->lower);
+    }
+
     zstream = data->zstream;
     /* Do the flush atleast once */
     do {
@@ -589,6 +854,27 @@ void http_compression_remove(FilterLayer *layer)
     PRBool io_error = PR_FALSE;
 
     data = (HttpCompressionData *) layer->context->data;
+
+    if (data->coding == COMP_BROTLI) {
+        /* Finish the Brotli stream (best-effort: this is teardown), then free. */
+        brotli_run(layer, data, BROTLI_OPERATION_FINISH, NULL, 0);
+        if (data->brotli)
+            BrotliEncoderDestroyInstance(data->brotli);
+        FREE(data->outbuf);
+        FREE(data);
+        return;
+    }
+
+    if (data->coding == COMP_ZSTD) {
+        /* Close the zstd frame (best-effort: teardown), then free. */
+        zstd_run(layer, data, ZSTD_e_end, NULL, 0);
+        if (data->zstd)
+            ZSTD_freeCCtx(data->zstd);
+        FREE(data->outbuf);
+        FREE(data);
+        return;
+    }
+
     zstream = data->zstream;
     unsigned char *outbuf = data->outbuf;
 
