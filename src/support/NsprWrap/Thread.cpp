@@ -249,6 +249,12 @@ Thread::setDefaultStackSize(const PRUint32 stackSize)
     Thread::defaultStackSize_ = stackSize;
 }
 
+PRUint32
+Thread::getDefaultStackSize(void)
+{
+    return Thread::defaultStackSize_;
+}
+
 
 /*
  * Invokes the <code>run()</code> method of the object that is

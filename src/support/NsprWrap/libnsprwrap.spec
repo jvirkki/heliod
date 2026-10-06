@@ -176,6 +176,11 @@ arch            all
 version         SUNWprivate
 end
 
+function        __1cGThreadTgetDefaultStackSize6F_I_
+arch            all
+version         SUNWprivate
+end
+
 function        __1cGThreadZforceGlobalThreadCreation6Fki_v_
 arch            all
 version         SUNWprivate

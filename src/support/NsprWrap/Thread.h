@@ -295,6 +295,17 @@ class THREAD_DLL_API Thread
         static void setDefaultStackSize(const PRUint32 stackSize);
 
         /**
+         * Returns the default stack size. The default stack size is used when
+         * the <code>start</code> method is called with <code>stackSize</code>
+         * = 0.
+         *
+         * @returns The default stack size in bytes, or 0 if it has not been
+         *          set with <code>setDefaultStackSize</code>.
+         * @see     #setDefaultStackSize
+         */
+        static PRUint32 getDefaultStackSize(void);
+
+        /**
          * This virtual method should be implemented in the user-defined 
          * subclass of <code>Thread</code>. The code in this method will 
          * be executed in a separate thread of execution.

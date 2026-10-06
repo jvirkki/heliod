@@ -35,6 +35,7 @@
 
 #include "base/ereport.h"
 #include "httpdaemon/connqueue.h"
+#include "NsprWrap/Thread.h"
 
 WorkerPool::WorkerPool(PRUint32 minThreads, PRUint32 maxThreads,
                        WorkerPoolCallback* callback)
@@ -77,7 +78,7 @@ PRBool WorkerPool::spawnWorkerLocked(void)
         PR_PRIORITY_NORMAL,
         PR_GLOBAL_THREAD,
         PR_UNJOINABLE_THREAD,
-        0);
+        Thread::getDefaultStackSize());
     if (!t) {
         ereport(LOG_FAILURE,
                 "WorkerPool: failed to create worker thread (%u live)",
@@ -87,8 +88,9 @@ PRBool WorkerPool::spawnWorkerLocked(void)
 
     threads_[curThreads_] = t;
     curThreads_++;
-    ereport(LOG_VERBOSE, "WorkerPool: grew to %u of %u worker threads",
-            curThreads_, maxThreads_);
+    ereport(LOG_VERBOSE,
+            "WorkerPool: grew to %u of %u worker threads (stack %u bytes)",
+            curThreads_, maxThreads_, Thread::getDefaultStackSize());
     return PR_TRUE;
 }
 
