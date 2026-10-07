@@ -196,6 +196,31 @@ and HTTP/2:
   under a burst of concurrent slow CGIs.  Reuses `https-test` over plain HTTP on
   18180.  This is the regression guard for the event pool reverting to a
   fixed-size, pre-spawn-max design.
+- `daemon_pool_smoke.sh <work-root>` — blocking-model `DaemonSession` pool
+  *sizing*: the pool must track demand (one thread per busy session, one per
+  queued connection, plus one spare), not the number of open sockets.  Opens
+  16 HTTP/1.1 keep-alive connections sequentially and leaves the sockets open,
+  then asserts via `/perfdump` that `KeepAliveCount` reaches 16 (they really
+  are parked in the keep-alive subsystem) while `Total Sessions Created` stays
+  at `min-threads` — the old `Connection::countActive + 1` rule grew one
+  thread per idle socket, to the lifetime high-water mark of open connections.
+  A second phase fires 16 concurrent slow CGIs with the idle sockets still
+  open and asserts the pool still grows under real demand.  Pins
+  `min-threads=2, max-threads=32`, uses the blocking io-model on 18180, and
+  installs `/perfdump` (`service-dump`) for the duration of the run.  Reuses
+  `https-test`.
+- `event_pool_isolation_smoke.sh <work-root>` — blocking/event pool
+  *isolation*: two configurations in sequence.  All-event: with no
+  `io-model=blocking` listener the blocking `DaemonSession` pool starts empty
+  (`Started 0 request processing threads`, no `DaemonSession pool grew`
+  lines), the keep-alive poll threads are absent (worker OS thread count is at
+  least `2*nproc` lower than in the mixed config), and 16 concurrent slow CGIs
+  grow only the `WorkerPool`.  Mixed: with an event listener on 18180 plus a
+  blocking listener on 18181, event traffic on 18180 still never grows the
+  blocking pool (the `nActiveSessions_` counter is blocking-path-only), while
+  the same burst against 18181 grows it normally.  Pins
+  `min-threads=2, max-threads=32`, installs `/perfdump` and a slow CGI, and
+  restores config between phases.  Reuses `https-test`.
 - `fastcgi_h2_smoke.sh <work-root>` — FastCGI served over HTTP/2.  The FastCGI
   responder (`plugins/fastcgi`) is a `PR_Poll()`-driven relay between the
   application socket and the client socket; over HTTP/2 the client is a synthetic

@@ -179,6 +179,30 @@ test-worker-pool:
 	$(BUILD_ROOT)/test/worker_pool_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- worker-pool elasticity test passed -----"
 
+# Blocking DaemonSession pool sizing test: the pool must size on demand (one
+# thread per busy session, one per queued connection, plus a spare) rather than
+# one per open socket -- idle keep-alive connections parked in PollManager must
+# not pull threads into existence.  Reads perfdump's "Total Sessions Created"
+# and "KeepAliveCount" while holding idle keep-alives open, then under a burst
+# of concurrent slow CGIs.
+test-daemon-pool:
+	@echo "----- Running blocking daemon-pool sizing test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/daemon_pool_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- daemon-pool sizing test passed -----"
+
+# Blocking/event pool isolation test: with no io-model=blocking listener the
+# blocking DaemonSession pool must start empty and no keep-alive poll threads
+# may exist; and traffic on event listeners must never grow the blocking pool
+# (the shared nActiveSessions_ counter used to leak event demand into the
+# blocking pool's sizing).  Also verifies a real blocking listener still grows
+# its pool.  Reads the LOG_VERBOSE pool-growth lines at log-level finest.
+test-event-pool-isolation:
+	@echo "----- Running blocking/event pool isolation test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/event_pool_isolation_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- pool isolation test passed -----"
+
 # FastCGI-over-HTTP/2 test: the FastCGI responder relays between the application
 # socket and the client socket with PR_Poll(); the HTTP/2 client socket is a
 # synthetic descriptor with no OS fd, which used to crash (NULL SERVER_ADDR),
@@ -208,7 +232,7 @@ test-tls:
 # Default target runs the HTTP/2 smoke.  Run the other variants explicitly with
 # `make -C test test-event`, `test-tls`, `test-h2-lifecycle`, `test-h2-idle`,
 # `test-h2-parallel`, `test-h2-stream`, `test-h2-request-end`, `test-h2-cookie`,
-# `test-h2-client-ip`, `test-h2-conformance`, `test-h2-perf`, `test-compression`
-# or `test-worker-pool`.
+# `test-h2-client-ip`, `test-h2-conformance`, `test-h2-perf`, `test-compression`,
+# `test-worker-pool`, `test-daemon-pool` or `test-event-pool-isolation`.
 tests: test-h2
 	@echo "----- tests completed -----"

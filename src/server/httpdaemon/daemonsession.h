@@ -91,6 +91,11 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
         // Initialize connection-related constants
         static void ConfigureLate(const ServerXMLSchema::KeepAlive& keepAlive, PRInt32 nMaxKeepAliveConnections, PRInt32 nMaxQueued);
 
+        // Empty the blocking thread pool and disable keep-alive poll threads
+        // when no enabled listener uses io-model=blocking.  Must be called
+        // after ConfigureEarly/ConfigureLate and before Initialize().
+        static void ConfigureBlockingPool(PRBool fAnyBlockingListener);
+
         // Module initialization
         static PRStatus Initialize(void);
 
@@ -124,11 +129,12 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
         /**
          * Starts additonal DaemonSession threads if necessary.
          *
-         * No additional threads will be created if the number of 
-         * <code>DaemonSession</code> threads has already reached the
-         * limit or if the number of "idle" <code>DaemonSession</code> threads
-         * are more than the number of pending connections in the
-         * <code>ConnectionQueue</code>.
+         * The pool is sized on demand: one thread per busy session, one per
+         * connection queued in the <code>ConnectionQueue</code>, plus one
+         * spare.  No additional threads will be created if the number of
+         * <code>DaemonSession</code> threads has already reached the limit or
+         * if the existing threads already cover that demand; idle keep-alive
+         * connections do not create demand.
          *
          * @returns The number of new threads started.
          */

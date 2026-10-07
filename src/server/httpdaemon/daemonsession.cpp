@@ -234,6 +234,25 @@ DaemonSession::ConfigureLate(const ServerXMLSchema::KeepAlive& keepAlive, PRInt3
     }
 }
 
+void
+DaemonSession::ConfigureBlockingPool(PRBool fAnyBlockingListener)
+{
+    if (fAnyBlockingListener)
+        return;
+
+    // No listener uses io-model=blocking: the blocking thread pool starts
+    // empty (it can still grow on demand if the acceptor fallback queues a
+    // connection) and no keep-alive poll threads are created.  nMaxSessions_
+    // is left alone; ConnectionQueue sizing, the NSAPI default pool, and the
+    // event WorkerPool all read it.
+    nMinSessions_ = 0;
+    nKeepAliveThreads_ = 0;
+    ereport(LOG_INFORM,
+            "No http-listener uses io-model=blocking; the blocking "
+            "request-processing thread pool starts empty and keep-alive "
+            "poll threads are disabled");
+}
+
 // Initialize global state for DaemonSession
 PRStatus
 DaemonSession::Initialize(void)
@@ -710,7 +729,12 @@ DaemonSession::processOneConnection(void)
     if (!request_->StartSession(inbuf))
         return;
 
-    PR_AtomicIncrement(&nActiveSessions_);
+    // nActiveSessions_ counts busy blocking DaemonSession threads only; the
+    // event-driven workers are sized by WorkerPool.  conn may become NULL via
+    // HandleKeepAlive below, so capture the path now.
+    PRBool fBlockingPath = !conn->fEventDriven;
+    if (fBlockingPath)
+        PR_AtomicIncrement(&nActiveSessions_);
 
     //
     // continue processing requests as long as KeepAlive is requested
@@ -790,7 +814,8 @@ DaemonSession::processOneConnection(void)
     inbuf = NULL;
     pool_recycle(pool_, NULL);
 
-    PR_AtomicDecrement(&nActiveSessions_);
+    if (fBlockingPath)
+        PR_AtomicDecrement(&nActiveSessions_);
 }
 
 /* Per-worker-thread persistent DaemonSession for the event-driven path.
@@ -1342,10 +1367,21 @@ DaemonSession::PostThreads(void)
     if (nTotalSessions_ >= nMaxSessions_)
         return 0;
 
-    PRInt32 nSessionsToAdd = Connection::countActive + 1 - nTotalSessions_;
+    PRInt32 nQueued = connQueue_ ? connQueue_->GetLength() : 0;
+    PRInt32 nDemand = nActiveSessions_ + nQueued;
+    if (nDemand > 0)
+        nDemand++;      // keep one spare while there is work
+    if (nDemand < nMinSessions_)
+        nDemand = nMinSessions_;
+    PRInt32 nSessionsToAdd = nDemand - nTotalSessions_;
 
-    // If the number of unused DaemonSession threads is sufficient then
-    // we don't create more threads
+    // If the pool already has enough DaemonSession threads for current demand
+    // -- one per busy session, one per queued connection, plus one spare
+    // while there is work, floored at nMinSessions_ -- then we don't create
+    // more threads.  Idle keep-alive connections parked in the keep-alive
+    // subsystem do not pull threads into existence, and with zero demand the
+    // spare must not materialise a thread from nothing (the pool may
+    // legitimately be empty when no listener is blocking).
     if (nSessionsToAdd < 1)
         return 0;
 
@@ -1354,7 +1390,13 @@ DaemonSession::PostThreads(void)
     if (WebServer::isTerminating())
         return 0;
 
-    nSessionsToAdd = Connection::countActive + 1 - nTotalSessions_;
+    nQueued = connQueue_ ? connQueue_->GetLength() : 0;
+    nDemand = nActiveSessions_ + nQueued;
+    if (nDemand > 0)
+        nDemand++;
+    if (nDemand < nMinSessions_)
+        nDemand = nMinSessions_;
+    nSessionsToAdd = nDemand - nTotalSessions_;
     if (nSessionsToAdd < nMinSessions_ - nTotalSessions_)
         nSessionsToAdd = nMinSessions_ - nTotalSessions_;
     if (nSessionsToAdd > nMaxSessions_ - nTotalSessions_)
@@ -1380,6 +1422,10 @@ DaemonSession::PostThreads(void)
         }
         nTotalSessions_++;
     }
+
+    if (nThreads > 0)
+        ereport(LOG_VERBOSE, "DaemonSession pool grew to %d of %d threads",
+                nTotalSessions_, nMaxSessions_);
 
     return nThreads;
 }

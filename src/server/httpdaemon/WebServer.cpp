@@ -1344,6 +1344,29 @@ WebServer::Init(int argc, char *argv[])
     return PR_SUCCESS;
 }
 
+// Counts enabled listeners by I/O model in a single pass: *pnEvent gets the
+// number of io-model=event listeners, *pnBlocking the rest (io-model defaults
+// to blocking).
+static void
+configurationCountIoModels(const Configuration* configuration,
+                           int* pnEvent, int* pnBlocking)
+{
+    *pnEvent = 0;
+    *pnBlocking = 0;
+    if (!configuration)
+        return;
+    for (int i = 0; i < configuration->getLscCount(); i++) {
+        const ListenSocketConfig* lsc = configuration->getLsc(i);
+        if (!lsc || !lsc->enabled)
+            continue;
+        if (lsc->ioModel.getEnumValue() ==
+            ServerXMLSchema::IoModel::IOMODEL_EVENT)
+            (*pnEvent)++;
+        else
+            (*pnBlocking)++;
+    }
+}
+
 PRStatus
 WebServer::Run()
 {
@@ -1734,6 +1757,15 @@ WebServer::Run()
     shtml_init_late();
     accel_init_late();
 
+    // The blocking DaemonSession pool only needs to exist when at least one
+    // enabled listener uses io-model=blocking; the same listener scan feeds
+    // the event-dispatcher decision below.
+    int nEventListeners, nBlockingListeners;
+    configurationCountIoModels(configuration, &nEventListeners,
+                               &nBlockingListeners);
+    DaemonSession::ConfigureBlockingPool(nBlockingListeners > 0 ? PR_TRUE
+                                                              : PR_FALSE);
+
     // Initialize the DaemonSession infrastructure including the keep-alive
     // subsystem and the connection queue
     if (DaemonSession::Initialize() == PR_FAILURE) {
@@ -1744,16 +1776,8 @@ WebServer::Run()
     // Start the global event dispatcher if any listener requests the
     // event-driven I/O model, or if the environment overrides the decision.
     PRBool startEventDispatcher = httpdaemon_use_event_model();
-    if (!startEventDispatcher && configuration) {
-        for (int i = 0; i < configuration->getLscCount(); i++) {
-            const ListenSocketConfig* lsc = configuration->getLsc(i);
-            if (lsc && lsc->ioModel.getEnumValue() ==
-                       ServerXMLSchema::IoModel::IOMODEL_EVENT) {
-                startEventDispatcher = PR_TRUE;
-                break;
-            }
-        }
-    }
+    if (!startEventDispatcher && nEventListeners > 0)
+        startEventDispatcher = PR_TRUE;
     if (startEventDispatcher) {
         // Size the event worker pool the way the blocking DaemonSession pool is
         // sized: start at min-threads and let it grow to max-threads on demand.
