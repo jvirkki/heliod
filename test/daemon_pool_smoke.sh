@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Blocking-model DaemonSession pool sizing test.
+# Classic-model DaemonSession pool sizing test.
 #
 # PostThreads() used to size the pool as Connection::countActive + 1, and
 # countActive counts every live Connection -- including idle keep-alives
@@ -18,7 +18,7 @@
 # connection).  Phase 2 fires concurrent slow requests with the idle sockets
 # still open and asserts the pool still grows under real demand.
 #
-# Plain HTTP on 18180 with the blocking io-model; reuses https-test;
+# Plain HTTP on 18180 with the classic io-model; reuses https-test;
 # saves/restores config.
 #
 # Usage: test/daemon_pool_smoke.sh <heliod-work-root>
@@ -93,7 +93,7 @@ sys.stdout.write("Status: 200\r\nContent-Type: text/plain\r\n\r\nslept %d\n" % s
 PY
 chmod +x "${CGI_DIR}/slow.py"
 
-# Configure: blocking I/O on 18180 (keep-alive stays on; the keep-alive element
+# Configure: classic I/O on 18180 (keep-alive stays on; the keep-alive element
 # is omitted, which implicitly enables it), thread pool min/max pinned.
 python3 - <<PY
 import xml.etree.ElementTree as ET, os
@@ -122,7 +122,7 @@ for l in r.findall("http-listener"):
         p.text = "${PORT}"
         for c in list(l):
             if c.tag == "io-model": l.remove(c)
-        ET.SubElement(l, "io-model").text = "blocking"
+        ET.SubElement(l, "io-model").text = "classic"
 
 with open(path, "wb") as f:
     f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n'); t.write(f, xml_declaration=False, encoding="UTF-8")

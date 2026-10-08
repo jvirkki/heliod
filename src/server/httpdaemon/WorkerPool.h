@@ -81,9 +81,9 @@ public:
  * asynchronously. The pool is intentionally separate from the event loop so
  * that idle connections do not hold threads.
  *
- * Sizing mirrors the blocking DaemonSession thread pool: the pool starts with
+ * Sizing mirrors the classic DaemonSession thread pool: the pool starts with
  * `min` threads and grows one at a time toward `max` whenever work arrives and
- * every existing worker is already busy. Like the blocking model, it does not
+ * every existing worker is already busy. Like the classic model, it does not
  * shrink -- once grown, threads persist for the process lifetime.
  */
 class WorkerPool

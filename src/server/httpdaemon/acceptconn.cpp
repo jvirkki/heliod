@@ -136,7 +136,7 @@ Acceptor::run(void)
 
         // Route to the event-driven path when both the listener and the global
         // dispatcher are configured for it. Otherwise fall back to the legacy
-        // blocking connection queue.
+        // classic connection queue.
         PRBool useEventModel = (globalEventDispatcher &&
                                 globalEventDispatcher->isStarted() &&
                                 _listenSocket->getConfig()->ioModel.getEnumValue() ==

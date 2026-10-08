@@ -188,7 +188,7 @@ and HTTP/2:
   gzip-only and unchanged.
 - `worker_pool_smoke.sh <work-root>` — event-model worker-pool *elasticity*: the
   event I/O `WorkerPool` must start at `min-threads` and grow to `max-threads` on
-  demand (never shrinking), mirroring the blocking `DaemonSession` pool, rather
+  demand (never shrinking), mirroring the classic `DaemonSession` pool, rather
   than pre-spawning `max` at startup.  Pins `min-threads=2, max-threads=32`, runs
   the instance at `log-level finest`, and reads the pool's own growth log
   (`WorkerPool: grew to N of M`): it asserts the peak is exactly `min` at idle
@@ -196,7 +196,7 @@ and HTTP/2:
   under a burst of concurrent slow CGIs.  Reuses `https-test` over plain HTTP on
   18180.  This is the regression guard for the event pool reverting to a
   fixed-size, pre-spawn-max design.
-- `daemon_pool_smoke.sh <work-root>` — blocking-model `DaemonSession` pool
+- `daemon_pool_smoke.sh <work-root>` — classic-model `DaemonSession` pool
   *sizing*: the pool must track demand (one thread per busy session, one per
   queued connection, plus one spare), not the number of open sockets.  Opens
   16 HTTP/1.1 keep-alive connections sequentially and leaves the sockets open,
@@ -206,18 +206,18 @@ and HTTP/2:
   thread per idle socket, to the lifetime high-water mark of open connections.
   A second phase fires 16 concurrent slow CGIs with the idle sockets still
   open and asserts the pool still grows under real demand.  Pins
-  `min-threads=2, max-threads=32`, uses the blocking io-model on 18180, and
+  `min-threads=2, max-threads=32`, uses the classic io-model on 18180, and
   installs `/perfdump` (`service-dump`) for the duration of the run.  Reuses
   `https-test`.
-- `event_pool_isolation_smoke.sh <work-root>` — blocking/event pool
+- `event_pool_isolation_smoke.sh <work-root>` — classic/event pool
   *isolation*: two configurations in sequence.  All-event: with no
-  `io-model=blocking` listener the blocking `DaemonSession` pool starts empty
+  `io-model=classic` listener the classic `DaemonSession` pool starts empty
   (`Started 0 request processing threads`, no `DaemonSession pool grew`
   lines), the keep-alive poll threads are absent (worker OS thread count is at
   least `2*nproc` lower than in the mixed config), and 16 concurrent slow CGIs
   grow only the `WorkerPool`.  Mixed: with an event listener on 18180 plus a
-  blocking listener on 18181, event traffic on 18180 still never grows the
-  blocking pool (the `nActiveSessions_` counter is blocking-path-only), while
+  classic listener on 18181, event traffic on 18180 still never grows the
+  classic pool (the `nActiveSessions_` counter is classic-path-only), while
   the same burst against 18181 grows it normally.  Pins
   `min-threads=2, max-threads=32`, installs `/perfdump` and a slow CGI, and
   restores config between phases.  Reuses `https-test`.

@@ -46,7 +46,7 @@ class Connection;
  * the event-driven model and lives for the lifetime of the server process.
  *
  * The current implementation is a transitional bridge: a worker thread calls
- * the existing blocking request-processing path on a Connection that the event
+ * the existing classic request-processing path on a Connection that the event
  * loop has identified as readable. Idle keep-alive connections therefore do
  * not consume a worker thread.
  */

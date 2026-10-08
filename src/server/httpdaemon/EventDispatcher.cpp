@@ -73,7 +73,7 @@ PRStatus EventDispatcher::start(void)
     // An idle event-driven connection is a keep-alive connection whatever
     // protocol it speaks, so reclaim it on the configured keep-alive timeout.
     // Without this nothing ever closes a parked connection: the PollManager
-    // that enforces the timeout on the blocking path is not in this picture.
+    // that enforces the timeout on the classic path is not in this picture.
     // HELIOD_EVENT_IDLE_TIMEOUT is authoritative when set, including a 0 that
     // disables expiry, and is how the smoke tests get a deadline they can wait
     // for.  Otherwise the configured keep-alive timeout wins; if keep-alive is

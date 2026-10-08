@@ -1756,7 +1756,7 @@ void H2Session::dispatchReadyStreams(void)
             continue;
         }
 
-        // No worker pool willing to take the stream: the blocking I/O model, or
+        // No worker pool willing to take the stream: the classic I/O model, or
         // shutdown in progress.  Run it here instead.  Serial, but correct, and
         // it keeps the invariant intact -- an outstanding count that never came
         // back down would leave the connection with no owner at all.  runJob()
@@ -2055,7 +2055,7 @@ void H2Session::drive(void)
                 globalEventDispatcher->requeueConnection(conn))
                 return;
 
-            // Nothing to requeue onto (blocking I/O model, or shutting down), so
+            // Nothing to requeue onto (classic I/O model, or shutting down), so
             // there would be no second turn.  Take the token back and keep going
             // rather than dropping the responses.
             if (!claimDriver())

@@ -2518,10 +2518,10 @@
       </xs:annotation>
     </xs:element>
 
-    <xs:element name="io-model" type="ioModelType" default="blocking" minOccurs="0">
+    <xs:element name="io-model" type="ioModelType" default="classic" minOccurs="0">
       <xs:annotation>
         <xs:appinfo>
-          <appinfo:implicit>blocking</appinfo:implicit>
+          <appinfo:implicit>classic</appinfo:implicit>
         </xs:appinfo>
       </xs:annotation>
     </xs:element>
@@ -4268,13 +4268,15 @@
 <xs:simpleType name="ioModelType">
   <xs:annotation>
     <xs:documentation>
-      The I/O threading model for this listener. "blocking" uses the
-      legacy DaemonSession thread-per-connection model. "event" uses
-      the event-driven epoll path with a bounded worker pool.
+      The I/O threading model for this listener. "classic" uses the
+      existing request-handling model (acceptor threads, connection
+      queue, DaemonSession worker threads and keep-alive poll threads).
+      "event" uses the event-driven path (epoll/kqueue/event ports)
+      with an on-demand worker pool.
     </xs:documentation>
   </xs:annotation>
   <xs:restriction base="xs:token">
-    <xs:enumeration value="blocking"/>
+    <xs:enumeration value="classic"/>
     <xs:enumeration value="event"/>
   </xs:restriction>
 </xs:simpleType>

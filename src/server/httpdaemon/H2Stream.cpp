@@ -966,7 +966,7 @@ PRStatus H2Stream::dispatchRequest()
     // The pipeline left this thread's stats slot in whatever mode the request
     // reached -- "processing", or "response" once httpact started sending.
     // endProcessing() clears the slot's VS/method/URI/age but deliberately not
-    // its mode, because in the blocking model run()'s next iteration resets that
+    // its mode, because in the classic model run()'s next iteration resets that
     // to idle.  A worker-pool thread has no such loop, so without this the slot
     // keeps a stale busy mode for the life of the thread and perfdump lists the
     // thread as a live session with every other column blank.  One such row per

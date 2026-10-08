@@ -22,7 +22,7 @@
             Linux, kqueue on BSD/macOS, event ports on Solaris),
             WorkerPool and EventDispatcher in src/server/httpdaemon.
             Selected per listener with the new <io-model> element in
-            server.xml, "blocking" (the default, i.e. the existing
+            server.xml, "classic" (the default, i.e. the existing
             model) or "event"; HELIOD_EVENT_MODEL /
             HELIOD_EVENT_IDLE_TIMEOUT environment overrides.  In the
             event model the acceptor threads hand new connections to
@@ -61,7 +61,7 @@
             create-instance and post-install are installed into the
             work bin so the smoke tests can create their own
             instance; test/TESTING.md added, along with smoke tests
-            for TLS, event vs. blocking I/O parity, HTTP/2 (basic,
+            for TLS, event vs. classic I/O parity, HTTP/2 (basic,
             lifecycle, parallel streams, streaming responses, request
             end, idle timeout, cookies, client IP, FastCGI, h2spec,
             browser interop, h2 vs. HTTP/1.1 performance),

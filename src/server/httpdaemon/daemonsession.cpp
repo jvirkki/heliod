@@ -235,12 +235,12 @@ DaemonSession::ConfigureLate(const ServerXMLSchema::KeepAlive& keepAlive, PRInt3
 }
 
 void
-DaemonSession::ConfigureBlockingPool(PRBool fAnyBlockingListener)
+DaemonSession::ConfigureClassicPool(PRBool fAnyClassicListener)
 {
-    if (fAnyBlockingListener)
+    if (fAnyClassicListener)
         return;
 
-    // No listener uses io-model=blocking: the blocking thread pool starts
+    // No listener uses io-model=classic: the classic thread pool starts
     // empty (it can still grow on demand if the acceptor fallback queues a
     // connection) and no keep-alive poll threads are created.  nMaxSessions_
     // is left alone; ConnectionQueue sizing, the NSAPI default pool, and the
@@ -248,7 +248,7 @@ DaemonSession::ConfigureBlockingPool(PRBool fAnyBlockingListener)
     nMinSessions_ = 0;
     nKeepAliveThreads_ = 0;
     ereport(LOG_INFORM,
-            "No http-listener uses io-model=blocking; the blocking "
+            "No http-listener uses io-model=classic; the classic "
             "request-processing thread pool starts empty and keep-alive "
             "poll threads are disabled");
 }
@@ -501,7 +501,7 @@ DaemonSession::GetConnection(void)
 /* prepareConnection()
  *
  * Prepare the connection currently stored in this->conn for request
- * processing.  This is shared by the blocking DaemonSession::run() loop
+ * processing.  This is shared by the classic DaemonSession::run() loop
  * and the event-driven processConnection() path.
  */
 void
@@ -596,7 +596,7 @@ DaemonSession::prepareConnection(void)
         // WOULD_BLOCK-triggered fallback below never ran and the connection
         // was silently torn down mid-handshake (IO_TIMEOUT is a "quiet"
         // close error below). Blocking recv with the full timeout drives
-        // the handshake correctly, as it always has for the blocking path.
+        // the handshake correctly, as it always has for the classic path.
         inbuf->cursize = PR_Recv(conn->fd, (void *)(inbuf->inbuf),
                                  inbuf->maxsize - 1, 0, PR_INTERVAL_NO_WAIT);
         if (inbuf->cursize < 0 && PR_GetError() == PR_WOULD_BLOCK_ERROR) {
@@ -717,7 +717,7 @@ DaemonSession::run(void)
 /* processOneConnection()
  *
  * Process a single connection after it has been obtained. Used by both
- * the blocking DaemonSession::run() loop and the event-driven
+ * the classic DaemonSession::run() loop and the event-driven
  * processConnection() path.
  */
 void
@@ -729,11 +729,11 @@ DaemonSession::processOneConnection(void)
     if (!request_->StartSession(inbuf))
         return;
 
-    // nActiveSessions_ counts busy blocking DaemonSession threads only; the
+    // nActiveSessions_ counts busy classic DaemonSession threads only; the
     // event-driven workers are sized by WorkerPool.  conn may become NULL via
     // HandleKeepAlive below, so capture the path now.
-    PRBool fBlockingPath = !conn->fEventDriven;
-    if (fBlockingPath)
+    PRBool fClassicPath = !conn->fEventDriven;
+    if (fClassicPath)
         PR_AtomicIncrement(&nActiveSessions_);
 
     //
@@ -782,7 +782,7 @@ DaemonSession::processOneConnection(void)
             break;
 
         // Event-driven connections are returned to the event loop after a
-        // single request instead of being handed to the blocking keep-alive
+        // single request instead of being handed to the classic keep-alive
         // subsystem. The fd must stay open and must not be recycled here;
         // the caller (processConnection) re-registers it with the event
         // loop once this function returns.
@@ -814,7 +814,7 @@ DaemonSession::processOneConnection(void)
     inbuf = NULL;
     pool_recycle(pool_, NULL);
 
-    if (fBlockingPath)
+    if (fClassicPath)
         PR_AtomicDecrement(&nActiveSessions_);
 }
 
@@ -828,7 +828,7 @@ DaemonSession::processOneConnection(void)
  * HttpRequest on the same worker thread then skipped its initialization,
  * ran HandleRequest() with an uninitialized pool, and crashed in
  * pool_mark().  Each worker thread therefore reuses a single persistent
- * DaemonSession, exactly like the blocking model's one-session-per-thread
+ * DaemonSession, exactly like the classic model's one-session-per-thread
  * design.
  */
 static PRUintn workerSessionIndex_;
@@ -906,7 +906,7 @@ DaemonSession::processConnection(Connection* connection)
         // thread (mirrors the failed-GetConnection path in run()).
         //
         // prepareConnection() has already called beginClient(), which puts this
-        // thread's stats slot in "request" mode.  The blocking model leaves a
+        // thread's stats slot in "request" mode.  The classic model leaves a
         // mode behind too, but its run() loop resets it to idle at the top of
         // the next iteration; a worker-pool thread has no such loop, so every
         // exit from here has to reset it by hand.  Otherwise the slot keeps the
@@ -1158,7 +1158,7 @@ PRBool
 DaemonSession::RequestKeepAlive(PRBool fKeepAlive)
 {
     if (conn->fEventDriven) {
-        // Event-driven connections do not use the blocking keep-alive poll
+        // Event-driven connections do not use the classic keep-alive poll
         // subsystem; their idle-wait is handled by the event loop. Grant or
         // revoke the reservation directly without consuming a slot from the
         // shared PollManager reservation pool.
@@ -1381,7 +1381,7 @@ DaemonSession::PostThreads(void)
     // more threads.  Idle keep-alive connections parked in the keep-alive
     // subsystem do not pull threads into existence, and with zero demand the
     // spare must not materialise a thread from nothing (the pool may
-    // legitimately be empty when no listener is blocking).
+    // legitimately be empty when no listener is classic).
     if (nSessionsToAdd < 1)
         return 0;
 

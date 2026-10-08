@@ -499,12 +499,12 @@ wait_for_listener() {
 
 cd "${INSTANCE_DIR}"
 
-echo "=== Testing blocking I/O model ==="
+echo "=== Testing classic I/O model ==="
 configure_instance ""
-"${INSTANCE_DIR}/bin/startserv" > /tmp/${INSTANCE}-smoke-blocking.log 2>&1 &
+"${INSTANCE_DIR}/bin/startserv" > /tmp/${INSTANCE}-smoke-classic.log 2>&1 &
 SERVER_PID=$!
-wait_for_listener "blocking"
-run_tests "blocking"
+wait_for_listener "classic"
+run_tests "classic"
 cleanup_server
 SERVER_PID=""
 

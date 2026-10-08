@@ -1345,14 +1345,14 @@ WebServer::Init(int argc, char *argv[])
 }
 
 // Counts enabled listeners by I/O model in a single pass: *pnEvent gets the
-// number of io-model=event listeners, *pnBlocking the rest (io-model defaults
-// to blocking).
+// number of io-model=event listeners, *pnClassic the rest (io-model defaults
+// to classic).
 static void
 configurationCountIoModels(const Configuration* configuration,
-                           int* pnEvent, int* pnBlocking)
+                           int* pnEvent, int* pnClassic)
 {
     *pnEvent = 0;
-    *pnBlocking = 0;
+    *pnClassic = 0;
     if (!configuration)
         return;
     for (int i = 0; i < configuration->getLscCount(); i++) {
@@ -1363,7 +1363,7 @@ configurationCountIoModels(const Configuration* configuration,
             ServerXMLSchema::IoModel::IOMODEL_EVENT)
             (*pnEvent)++;
         else
-            (*pnBlocking)++;
+            (*pnClassic)++;
     }
 }
 
@@ -1757,14 +1757,14 @@ WebServer::Run()
     shtml_init_late();
     accel_init_late();
 
-    // The blocking DaemonSession pool only needs to exist when at least one
-    // enabled listener uses io-model=blocking; the same listener scan feeds
+    // The classic DaemonSession pool only needs to exist when at least one
+    // enabled listener uses io-model=classic; the same listener scan feeds
     // the event-dispatcher decision below.
-    int nEventListeners, nBlockingListeners;
+    int nEventListeners, nClassicListeners;
     configurationCountIoModels(configuration, &nEventListeners,
-                               &nBlockingListeners);
-    DaemonSession::ConfigureBlockingPool(nBlockingListeners > 0 ? PR_TRUE
-                                                              : PR_FALSE);
+                               &nClassicListeners);
+    DaemonSession::ConfigureClassicPool(nClassicListeners > 0 ? PR_TRUE
+                                                            : PR_FALSE);
 
     // Initialize the DaemonSession infrastructure including the keep-alive
     // subsystem and the connection queue
@@ -1779,7 +1779,7 @@ WebServer::Run()
     if (!startEventDispatcher && nEventListeners > 0)
         startEventDispatcher = PR_TRUE;
     if (startEventDispatcher) {
-        // Size the event worker pool the way the blocking DaemonSession pool is
+        // Size the event worker pool the way the classic DaemonSession pool is
         // sized: start at min-threads and let it grow to max-threads on demand.
         PRUint32 maxWorkers = DaemonSession::GetMaxSessions() > 0
                                   ? (PRUint32)DaemonSession::GetMaxSessions()
@@ -1935,7 +1935,7 @@ WebServer::Run()
     // TERMINATION TIME
     // we're on our way out now....
 
-    // Shut down the event-driven path before terminating blocking sessions.
+    // Shut down the event-driven path before terminating classic sessions.
     if (globalEventDispatcher) {
         delete globalEventDispatcher;
         globalEventDispatcher = NULL;

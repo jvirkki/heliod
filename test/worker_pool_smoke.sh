@@ -2,9 +2,9 @@
 #
 # Event-model worker-pool elasticity test.
 #
-# The event I/O model's WorkerPool must mirror the blocking DaemonSession pool:
+# The event I/O model's WorkerPool must mirror the classic DaemonSession pool:
 # start at min-threads and grow toward max-threads on demand under load (and,
-# like the blocking model, never shrink).  The original implementation instead
+# like the classic model, never shrink).  The original implementation instead
 # pre-spawned max-threads at startup; this guards against that regression.
 #
 # It reads the pool's own growth log ("WorkerPool: grew to N of M worker

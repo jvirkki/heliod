@@ -91,10 +91,10 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
         // Initialize connection-related constants
         static void ConfigureLate(const ServerXMLSchema::KeepAlive& keepAlive, PRInt32 nMaxKeepAliveConnections, PRInt32 nMaxQueued);
 
-        // Empty the blocking thread pool and disable keep-alive poll threads
-        // when no enabled listener uses io-model=blocking.  Must be called
+        // Empty the classic thread pool and disable keep-alive poll threads
+        // when no enabled listener uses io-model=classic.  Must be called
         // after ConfigureEarly/ConfigureLate and before Initialize().
-        static void ConfigureBlockingPool(PRBool fAnyBlockingListener);
+        static void ConfigureClassicPool(PRBool fAnyClassicListener);
 
         // Module initialization
         static PRStatus Initialize(void);
@@ -382,7 +382,7 @@ private:
         /**
          * Prepare an already-obtained connection for request processing:
          * set server IP/port, enable SSL if needed, and read initial data.
-         * Called by both the blocking GetConnection(void) path and the
+         * Called by both the classic GetConnection(void) path and the
          * event-driven processConnection path.
          */
         PRBool prepareConnection(void);

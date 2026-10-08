@@ -1,24 +1,24 @@
 #!/bin/bash
 #
-# Blocking/event pool isolation test
+# Classic/event pool isolation test
 #
-# When NO listener uses io-model=blocking, the blocking DaemonSession thread
+# When NO listener uses io-model=classic, the classic DaemonSession thread
 # pool must start empty and the keep-alive poll (KAPollThread) threads must
 # not be created at all: the server logs "No http-listener uses
-# io-model=blocking" and "Started 0 request processing threads", and the
+# io-model=classic" and "Started 0 request processing threads", and the
 # worker process carries measurably fewer threads (min-threads DaemonSessions
 # plus the KAPollThreads, which scale with CPU count, are absent).
 #
 # It also proves the pools are independent: traffic on an event listener must
-# never grow the blocking pool, even with a blocking listener configured --
-# the blocking DaemonSession::processConnection() path used to increment the
+# never grow the classic pool, even with a classic listener configured --
+# the classic DaemonSession::processConnection() path used to increment the
 # shared nActiveSessions_ counter for event traffic, so Clock()->PostThreads()
-# grew a blocking pool that event connections never use.
+# grew a classic pool that event connections never use.
 #
-# The blocking pool is never hard-disabled: the acceptor falls back to the
-# blocking ConnectionQueue if the event dispatcher rejects a connection, so a
-# second phase with a real blocking listener verifies the pool still grows
-# under genuine blocking demand.
+# The classic pool is never hard-disabled: the acceptor falls back to the
+# classic ConnectionQueue if the event dispatcher rejects a connection, so a
+# second phase with a real classic listener verifies the pool still grows
+# under genuine classic demand.
 #
 # Probes are the LOG_VERBOSE growth lines ("WorkerPool: grew to N of M" and
 # "DaemonSession pool grew to N of M"), so the instance runs at log-level
@@ -100,11 +100,11 @@ chmod +x "${CGI_DIR}/slow.py"
 
 ERRLOG="${INSTANCE_DIR}/logs/errors"
 
-# configure_instance <with-blocking-listener: 0|1>
+# configure_instance <with-classic-listener: 0|1>
 configure_instance() {
     python3 - "$1" <<PY
 import xml.etree.ElementTree as ET, os, sys
-want_blocking = sys.argv[1] == "1"
+want_classic = sys.argv[1] == "1"
 path = os.path.join("${CONFIG_DIR}", "server.xml")
 t = ET.parse(path); r = t.getroot()
 
@@ -144,13 +144,13 @@ for l in r.findall("http-listener"):
     elif l.findtext("name") == "http-listener-2":
         r.remove(l)
 
-if want_blocking:
+if want_classic:
     listener2 = copy.deepcopy(listener1)
     listener2.find("name").text = "http-listener-2"
     listener2.find("port").text = "${PORT2}"
     for c in list(listener2):
         if c.tag == "io-model": listener2.remove(c)
-    ET.SubElement(listener2, "io-model").text = "blocking"
+    ET.SubElement(listener2, "io-model").text = "classic"
     r.append(listener2)
     vs = r.find("virtual-server")
     names = [e.text for e in vs.findall("http-listener-name")]
@@ -250,13 +250,13 @@ start_server
 THREADS_ALLEVENT=$(worker_threads)
 echo "[epi] all-event: worker OS threads at idle: ${THREADS_ALLEVENT} (nproc=${NPROC})"
 
-check "all-event: blocking pool disabled logged" \
-      "$(grep -q 'No http-listener uses io-model=blocking' "${ERRLOG}" && echo 0 || echo 1)" \
+check "all-event: classic pool disabled logged" \
+      "$(grep -q 'No http-listener uses io-model=classic' "${ERRLOG}" && echo 0 || echo 1)" \
       "(errors log)"
 check "all-event: started 0 request processing threads" \
       "$(grep -q 'Started 0 request processing threads' "${ERRLOG}" && echo 0 || echo 1)" \
       ""
-check "all-event: blocking pool never grew at idle" \
+check "all-event: classic pool never grew at idle" \
       "$([ -z "$(ds_peak)" ] && echo 0 || echo 1)" \
       "(ds_peak=$(ds_peak))"
 
@@ -271,7 +271,7 @@ wait 2>/dev/null || true
 check "all-event: event worker pool grows under load" \
       "$([ "${WP1}" -ge $(( MIN_THREADS + 5 )) ] && echo 0 || echo 1)" \
       "(peak=${WP1} >= $(( MIN_THREADS + 5 )))"
-check "all-event: event traffic never grows blocking pool" \
+check "all-event: event traffic never grows classic pool" \
       "$([ -z "$(ds_peak)" ] && echo 0 || echo 1)" \
       "(ds_peak=$(ds_peak))"
 if tail -200 "${ERRLOG}" 2>/dev/null | grep -qiE "SIGSEGV|catastrophe|assertion"; then
@@ -282,7 +282,7 @@ fi
 
 stop_server
 
-# ==================== config 2: event + blocking listener ====================
+# ==================== config 2: event + classic listener ====================
 rm -rf "${CONFIG_DIR}"; cp -r "${CONFIG_DIR}.pristine" "${CONFIG_DIR}"
 configure_instance 1
 add_mappings
@@ -292,13 +292,13 @@ THREADS_MIXED=$(worker_threads)
 DELTA=$(( THREADS_MIXED - THREADS_ALLEVENT ))
 echo "[epi] mixed: worker OS threads at idle: ${THREADS_MIXED} (delta vs all-event: ${DELTA}, expected >= $(( 2 * NPROC )))"
 
-check "mixed: no blocking-pool-disabled message" \
-      "$(grep -q 'No http-listener uses io-model=blocking' "${ERRLOG}" && echo 1 || echo 0)" \
+check "mixed: no classic-pool-disabled message" \
+      "$(grep -q 'No http-listener uses io-model=classic' "${ERRLOG}" && echo 1 || echo 0)" \
       ""
 check "mixed: started min request processing threads" \
       "$(grep -q "Started ${MIN_THREADS} request processing threads" "${ERRLOG}" && echo 0 || echo 1)" \
       ""
-check "mixed: idle thread count includes blocking pool + KA pollers" \
+check "mixed: idle thread count includes classic pool + KA pollers" \
       "$([ "${DELTA}" -ge $(( 2 * NPROC )) ] && echo 0 || echo 1)" \
       "(delta=${DELTA} >= $(( 2 * NPROC )))"
 
@@ -314,7 +314,7 @@ check "mixed: event worker pool grows under load" \
       "$([ "${WP2}" -ge $(( MIN_THREADS + 5 )) ] && echo 0 || echo 1)" \
       "(peak=${WP2})"
 DSP=$(ds_peak); DSP=${DSP:-0}
-check "mixed: event traffic still does not grow blocking pool" \
+check "mixed: event traffic still does not grow classic pool" \
       "$([ "${DSP}" -le "${MIN_THREADS}" ] && echo 0 || echo 1)" \
       "(ds_peak=${DSP}, startup min-floor spawn of ${MIN_THREADS} is expected) -- ticket 20"
 
@@ -323,10 +323,10 @@ for i in $(seq 1 ${CONCURRENCY}); do
 done
 sleep $(( SLOW_SECS - 1 ))
 DS2=$(ds_peak); DS2=${DS2:-0}
-echo "[epi] mixed: DaemonSession pool peak under blocking load: ${DS2}; perfdump: $(perfdump_sessions ${PORT2})"
+echo "[epi] mixed: DaemonSession pool peak under classic load: ${DS2}; perfdump: $(perfdump_sessions ${PORT2})"
 wait 2>/dev/null || true
 
-check "mixed: blocking pool still grows for blocking demand" \
+check "mixed: classic pool still grows for classic demand" \
       "$([ "${DS2}" -ge $(( MIN_THREADS + 5 )) ] && echo 0 || echo 1)" \
       "(ds_peak=${DS2} >= $(( MIN_THREADS + 5 )))"
 
