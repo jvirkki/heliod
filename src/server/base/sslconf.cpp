@@ -76,19 +76,32 @@ extern "C"
 
 /* ----------------------- ALPN for HTTP/2 (h2) ------------------------ */
 
-// ALPN protocol advertisement: http/1.1 first (fallback), h2 second
-// (preferred).  With NSS SetNextProtoNego, the first entry is moved to the end
-// of the wire list, so the second entry (h2) is advertised as most preferred.
+// ALPN protocol advertisement:
+// - When HTTP/2 is enabled (io-model=event): http/1.1 first (fallback), h2
+//   second (preferred).  With NSS SetNextProtoNego, the first entry is moved
+//   to the end of the wire list, so the second entry (h2) is advertised as
+//   most preferred.
+// - When HTTP/2 is disabled (io-model=classic): advertise only http/1.1 so
+//   clients never negotiate h2 against a classic-model listener that cannot
+//   dispatch to H2Session.
 static const unsigned char h2AlpnList[] = {
     0x08, 'h', 't', 't', 'p', '/', '1', '.', '1',
     0x02, 'h', '2'
 };
 
-static SECStatus h2ApplyALPN(PRFileDesc* sock)
+static const unsigned char h11AlpnList[] = {
+    0x08, 'h', 't', 't', 'p', '/', '1', '.', '1'
+};
+
+static SECStatus h2ApplyALPN(PRFileDesc* sock, PRBool h2Enabled)
 {
     SECStatus stat = SSL_OptionSet(sock, SSL_ENABLE_ALPN, PR_TRUE);
     if (stat == SECSuccess) {
-        stat = SSL_SetNextProtoNego(sock, h2AlpnList, sizeof(h2AlpnList));
+        if (h2Enabled) {
+            stat = SSL_SetNextProtoNego(sock, h2AlpnList, sizeof(h2AlpnList));
+        } else {
+            stat = SSL_SetNextProtoNego(sock, h11AlpnList, sizeof(h11AlpnList));
+        }
     }
     return stat;
 }
@@ -107,10 +120,11 @@ static SECStatus h2ApplyALPN(PRFileDesc* sock)
 
 
 SSLSocketConfiguration :: SSLSocketConfiguration(ServerXMLSchema::Ssl& config, 
-ServerXMLSchema::Pkcs11& pkcs11, ConfigurationObject* parent)
+ServerXMLSchema::Pkcs11& pkcs11, ConfigurationObject* parent, PRBool h2Enabled)
 : ServerXMLSchema::SslWrapper(config),
   ConfigurationObject(parent),
   model(NULL),
+  h2Enabled(h2Enabled),
   rsa_ciphers(0),
   ecc_ciphers(0),
   export_ciphers(0),
@@ -768,12 +782,12 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
         }
     }
 
-    // Enable ALPN and register the protocol selection callback.
+    // Enable ALPN and configure the advertised protocol list.
     if (stat == SECSuccess) {
-        stat = h2ApplyALPN(sock);
+        stat = h2ApplyALPN(sock, h2Enabled);
         if (stat != SECSuccess) {
             ereport(LOG_FAILURE,
-                    "Failed to configure ALPN for h2: %s",
+                    "Failed to configure ALPN: %s",
                     system_errmsg());
         }
     }
@@ -804,10 +818,11 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
 }
 
 /*
- * ALPN selection callback.  Supports HTTP/2 ("h2") and HTTP/1.1.
- * Prefers h2 when the client offers it.
+ * ALPN selection callback.  Supports HTTP/2 ("h2") when enabled on the
+ * listener (io-model=event) and HTTP/1.1.  Prefers h2 when allowed and
+ * offered by the client.
  */
-SECStatus SSLSocketConfiguration :: alpnCallback(void* /*arg*/,
+SECStatus SSLSocketConfiguration :: alpnCallback(void* arg,
                                                  PRFileDesc* /*fd*/,
                                                  const unsigned char* protos,
                                                  unsigned int protosLen,
@@ -820,8 +835,13 @@ SECStatus SSLSocketConfiguration :: alpnCallback(void* /*arg*/,
     const unsigned int h2Len = sizeof(h2) - 1;
     const unsigned int h11Len = sizeof(h11) - 1;
 
-    // Scan client ALPN list for h2 first, then http/1.1.
-    for (unsigned int pass = 0; pass < 2; ++pass) {
+    const SSLSocketConfiguration* cfg =
+        static_cast<const SSLSocketConfiguration*>(arg);
+    const PRBool allowH2 = (cfg != NULL) ? cfg->h2Enabled : PR_FALSE;
+
+    // Scan client ALPN list for h2 first (only when h2 is enabled on this
+    // listener), then http/1.1.
+    for (unsigned int pass = allowH2 ? 0 : 1; pass < 2; ++pass) {
         const char* wanted = (pass == 0) ? h2 : h11;
         const unsigned int wantedLen = (pass == 0) ? h2Len : h11Len;
         unsigned int offset = 0;
@@ -934,7 +954,7 @@ PRBool SSLSocketConfiguration :: enable(PRFileDesc*& socket) const
          * reapplying ALPN here is cheap, idempotent, and protects against
          * building against an older NSS.
          */
-        if (h2ApplyALPN(socket) != SECSuccess) {
+        if (h2ApplyALPN(socket, h2Enabled) != SECSuccess) {
             ereport(LOG_WARN,
                     "Failed to configure ALPN on accepted socket: %s",
                     system_errmsg());

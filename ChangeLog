@@ -1,3 +1,18 @@
+2026-10-15  Joe McCabe <joe@jmccabe.org>
+
+        * Bug fix: gate ALPN "h2" advertisement and selection on the
+          owning listener's io-model (Ticket 15).
+
+            ListenSocketConfig now passes h2Enabled (true only when
+            io-model is "event") into SSLSocketConfiguration, which
+            advertises only "http/1.1" in SSL_SetNextProtoNego (both on
+            the model socket in enableSSL() and per accepted socket in
+            enable()) and skips "h2" in alpnCallback() when io-model is
+            "classic".  Previously, classic-model TLS listeners
+            advertised "h2" unconditionally and answered the resulting
+            HTTP/2 connection preface with 505.
+
+
 2026-09-01  Joe McCabe <joe@jmccabe.org>
 
         * version 0.5
@@ -13,7 +28,8 @@
             SSL_VersionRangeSet; cipher table rewritten around AEAD
             suites (ECDHE-RSA/ECDSA AES-GCM and ChaCha20-Poly1305)
             with RC4, 3DES and export-grade entries removed; ALPN
-            negotiation (http/1.1 and h2) and SNI-based certificate
+            negotiation (http/1.1, and h2 on event-model listeners) and
+            SNI-based certificate
             selection via SSL_SNISocketConfigHook.  ALPN requires
             NSS 3.123 or later; the Debian build links NSS 3.127 from
             the SBC tree (NSS_LIBDIR in defines_Linux_debian.mk).

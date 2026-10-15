@@ -80,8 +80,11 @@ class SSLSocketConfiguration : public ServerXMLSchema::SslWrapper, public Config
     public:
         SSLSocketConfiguration(ServerXMLSchema::Ssl& config,
                                ServerXMLSchema::Pkcs11& pkcs11,
-                               ConfigurationObject* parent);
+                               ConfigurationObject* parent,
+                               PRBool h2Enabled = PR_FALSE);
         ~SSLSocketConfiguration();
+
+        PRBool isH2Enabled() const { return h2Enabled; }
 
         // enable() turns on all the proper SSL mechanisms and certs
         // on a socket since is used at runtime, it cannot throw
@@ -118,6 +121,11 @@ class SSLSocketConfiguration : public ServerXMLSchema::SslWrapper, public Config
 
         // this fd is used as a model to set SSL parameters on another socket
         PRFileDesc* model;
+
+        // whether HTTP/2 ("h2") may be advertised/selected via ALPN on sockets
+        // using this configuration (true only when the owning listener's
+        // io-model is event)
+        PRBool h2Enabled;
 
         // track how many ciphers and certs of each kind
         int rsa_ciphers;

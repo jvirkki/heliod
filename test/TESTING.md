@@ -48,10 +48,14 @@ and HTTP/2:
 - `event_smoke.sh <work-root>` — event-driven HTTP/1.1 parity tests
   (keep-alive, pipelining, 100-continue, chunked, slow client, slowloris,
   concurrency, TLS, idle connections).  Reuses `https-test`.
-- `tls_smoke.sh <work-root>` — TLS version and ALPN checks.  Reuses
-  `https-test`.
-- `h2_smoke.sh <work-root>` — HTTP/2 ALPN negotiation (`openssl s_client
-  -alpn h2`) and a `curl --http2` request.  Reuses `https-test`.
+- `tls_smoke.sh <work-root>` — TLS version and ALPN checks, including the
+  classic-model ALPN regression check (default `io-model` listener advertises
+  only `http/1.1` when the client offers `h2,http/1.1` and answers `GET /` with
+  200).  Reuses `https-test`.
+- `h2_smoke.sh <work-root>` — HTTP/2 ALPN negotiation on an `io-model=event`
+  listener (`h2` selected) alongside a default-`io-model` listener (`http/1.1`
+  selected even when `h2` is offered), plus HTTP/2 settings, NSAPI request
+  dispatch, and PING ACK.  Reuses `https-test`.
 - `h2_lifecycle_smoke.sh <work-root>` — HTTP/2 connection *lifecycle*: session
   persistence across event-loop dispatches, resume after an idle period, many
   more concurrent H2 connections than worker threads, and multiple in-flight

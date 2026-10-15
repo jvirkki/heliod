@@ -24,6 +24,7 @@ INSTANCE_DIR="${WORK_ROOT}/${INSTANCE}"
 CONFIG_DIR="${INSTANCE_DIR}/config"
 HTTP_PORT=18180
 HTTPS_PORT=18443
+HTTPS_CLASSIC_PORT=18444
 TEMP_DIR=""
 SERVER_PID=""
 
@@ -126,7 +127,7 @@ for listener in root.findall("http-listener"):
         if port_el is None:
             port_el = ET.SubElement(listener, "port")
         port_el.text = "${HTTP_PORT}"
-    elif name == "https-listener-1":
+    elif name in ("https-listener-1", "https-classic-1"):
         root.remove(listener)
         continue
     else:
@@ -146,8 +147,21 @@ ssl = ET.SubElement(https, "ssl")
 ET.SubElement(ssl, "enabled").text = "true"
 ET.SubElement(ssl, "server-cert-nickname").text = "Server-Cert"
 
+# Second HTTPS listener with default io-model (classic): must advertise
+# only http/1.1 via ALPN and never negotiate h2.
+https_classic = ET.SubElement(root, "http-listener")
+ET.SubElement(https_classic, "name").text = "https-classic-1"
+ET.SubElement(https_classic, "port").text = "${HTTPS_CLASSIC_PORT}"
+ET.SubElement(https_classic, "server-name").text = "localhost"
+ET.SubElement(https_classic, "default-virtual-server-name").text = "test"
+ssl_classic = ET.SubElement(https_classic, "ssl")
+ET.SubElement(ssl_classic, "enabled").text = "true"
+ET.SubElement(ssl_classic, "server-cert-nickname").text = "Server-Cert"
+
 if "https-listener-1" not in vs_listeners:
     ET.SubElement(vs, "http-listener-name").text = "https-listener-1"
+if "https-classic-1" not in vs_listeners:
+    ET.SubElement(vs, "http-listener-name").text = "https-classic-1"
 
 with open(path, "wb") as f:
     f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -195,8 +209,43 @@ PY
 if [ "${ALPN_PROTO}" = "h2" ]; then
     echo "ALPN h2 OK"
 else
-    echo "ALPN h2 negotiation not yet working (alpn_protocol=${ALPN_PROTO:-none}); using HTTP/2 preface fallback"
+    echo "ALPN h2 negotiation failed on event listener (alpn_protocol=${ALPN_PROTO:-none})"
+    exit 1
 fi
+
+# Verify that a TLS listener with the default (classic) io-model
+# advertises only http/1.1 even when the client offers h2, and serves GET /
+# with HTTP/1.1 200 (not 505).
+python3 - <<PY
+import socket
+import ssl
+import sys
+
+host = 'localhost'
+port = ${HTTPS_CLASSIC_PORT}
+ctx = ssl._create_unverified_context()
+ctx.set_alpn_protocols(['h2', 'http/1.1'])
+
+with socket.create_connection((host, port), timeout=5) as raw:
+    with ctx.wrap_socket(raw, server_hostname=host) as sock:
+        negotiated = sock.selected_alpn_protocol()
+        if negotiated != 'http/1.1':
+            print(f'Expected ALPN http/1.1 on default io-model listener, got {negotiated!r}')
+            sys.exit(1)
+        sock.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+        resp = b''
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+
+status_line = resp.split(b'\r\n', 1)[0].decode('latin1', errors='replace')
+if not status_line.startswith('HTTP/1.1 200 '):
+    print(f'Expected HTTP/1.1 200 on default io-model listener, got: {status_line}')
+    sys.exit(1)
+print('ALPN default io-model (client offers h2 -> http/1.1, GET -> 200) OK')
+PY
 
 # Fallback: send the HTTP/2 connection preface and verify the server sends
 # its SETTINGS.  We do not require working ALPN, so this proves H2Session is

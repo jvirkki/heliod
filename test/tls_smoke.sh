@@ -1,13 +1,9 @@
 #!/bin/bash
 #
-# TLS smoke test for Phase 1a security hardening.
+# TLS smoke test for Phase 1a security hardening and ALPN io-model gating.
 #
-# Creates a temporary Heliod instance with an HTTPS listener, generates a
-# self-signed NSS certificate, starts the server, and validates the listener
-# with openssl s_client.
-#
-# This script is intentionally self-contained and destructive to the temporary
-# instance directory it creates.
+# Reuses the https-test instance created by `make install`.  The original
+# config is saved before the test and restored afterwards.
 
 set -euo pipefail
 
@@ -18,109 +14,168 @@ if [ $# -ne 1 ]; then
 fi
 
 WORK_ROOT="$1"
-HOSTNAME="tls-smoke"
-INSTANCE_NAME="https-${HOSTNAME}"
-INSTANCE_DIR="${WORK_ROOT}/${INSTANCE_NAME}"
-HTTP_PORT=18088
+INSTANCE="https-test"
+INSTANCE_DIR="${WORK_ROOT}/${INSTANCE}"
+CONFIG_DIR="${INSTANCE_DIR}/config"
+HTTP_PORT=18180
 HTTPS_PORT=18443
+TEMP_DIR=""
+SERVER_PID=""
+NO_PASS=""
+
+if [ ! -d "${INSTANCE_DIR}" ]; then
+    echo "Instance ${INSTANCE_DIR} not found. Run 'make install' first."
+    exit 1
+fi
+
+cleanup_server() {
+    if [ -n "${SERVER_PID:-}" ] && kill -0 "${SERVER_PID}" 2>/dev/null; then
+        "${INSTANCE_DIR}/bin/stopserv" 2>/dev/null || true
+        wait "${SERVER_PID}" 2>/dev/null || true
+    fi
+    pgrep -f "webservd.*${INSTANCE_DIR}" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+}
+
+restore_config() {
+    if [ -d "${CONFIG_DIR}.pristine" ]; then
+        rm -rf "${CONFIG_DIR}"
+        cp -r "${CONFIG_DIR}.pristine" "${CONFIG_DIR}"
+        rm -rf "${CONFIG_DIR}.pristine"
+    fi
+}
+
+cleanup_all() {
+    cleanup_server
+    restore_config
+    if [ -n "${TEMP_DIR:-}" ] && [ -d "${TEMP_DIR}" ]; then
+        rm -rf "${TEMP_DIR}"
+    fi
+    if [ -n "${NO_PASS:-}" ] && [ -f "${NO_PASS}" ]; then
+        rm -f "${NO_PASS}"
+    fi
+    rm -f /tmp/tls-smoke.p12 /tmp/tls-smoke-key.pem /tmp/tls-smoke-cert.pem /tmp/tls-smoke-ca.pem
+}
+
+trap cleanup_all EXIT
 
 cd "${WORK_ROOT}"
 
-# Clean up any previous run.
-for pid in $(pgrep -f "webservd.*${INSTANCE_DIR}" 2>/dev/null || true); do
-    kill -9 "$pid" 2>/dev/null || true
-done
-rm -rf "${INSTANCE_DIR}"
+# Stop any running instance so we can safely rewrite its config.
+"${INSTANCE_DIR}/bin/stopserv" 2>/dev/null || true
+pgrep -f "webservd.*${INSTANCE_DIR}" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+sleep 1
 
-# Create an HTTP-only instance first.
-./bin/create-instance -hostname "${HOSTNAME}" -user "${USER}" -port "${HTTP_PORT}"
+# Save a pristine copy of the config.
+rm -rf "${CONFIG_DIR}.pristine"
+cp -r "${CONFIG_DIR}" "${CONFIG_DIR}.pristine"
 
-# Create an NSS certificate database in the instance directory. Use the old DBM
-# format (cert8.db/key3.db) because the legacy server expects SECMOD_DB.
-cd "${INSTANCE_DIR}"
-certutil -N -d dbm:"." --empty-password 2>/dev/null || certutil -N -d dbm:"." -f <(echo "")
+# Create a temp directory for the smoke test instance.
+TEMP_DIR=$(mktemp -d /tmp/${INSTANCE}-tls-XXXXXX)
+chmod 700 "${TEMP_DIR}"
 
-# Create a self-signed certificate (and key) with serverAuth EKU, then
-# import the PKCS#12 bundle into the NSS database so the private key is
-# available for TLS.
+# Create a self-signed NSS certificate for the HTTPS listener.
+cd "${CONFIG_DIR}"
+NO_PASS=$(mktemp)
+printf '\n' > "${NO_PASS}"
+if [ ! -f cert8.db ] && [ ! -f cert9.db ]; then
+    certutil -N -d dbm:"." -f "${NO_PASS}" </dev/null 2>/dev/null
+fi
 openssl req -x509 -newkey rsa:2048 -keyout /tmp/tls-smoke-key.pem \
     -out /tmp/tls-smoke-cert.pem -days 90 -nodes \
-    -subj "/CN=${HOSTNAME}" \
-    -addext "subjectAltName=DNS:${HOSTNAME}" \
+    -subj "/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost" \
     -addext "extendedKeyUsage=serverAuth" \
-    -addext "keyUsage=digitalSignature,keyEncipherment"
-
+    -addext "keyUsage=digitalSignature,keyEncipherment" 2>/dev/null
 openssl pkcs12 -export -out /tmp/tls-smoke.p12 \
     -inkey /tmp/tls-smoke-key.pem -in /tmp/tls-smoke-cert.pem \
-    -name "Server-Cert" -passout pass:
+    -name "Server-Cert" -passout pass: 2>/dev/null
+pk12util -i /tmp/tls-smoke.p12 -d dbm:"." -w "${NO_PASS}" </dev/null
+CA_FILE="/tmp/tls-smoke-ca.pem"
+certutil -L -d dbm:"." -n "Server-Cert" -a > "${CA_FILE}" 2>/dev/null
+echo "NSSDir ${PWD}" >> magnus.conf
+cd "${WORK_ROOT}"
 
-pk12util -i /tmp/tls-smoke.p12 -d dbm:"." -W ''
-
-# Verify the certificate exists.
-certutil -L -d dbm:"." -n "Server-Cert"
-
-# Modify server.xml to add an HTTPS listener and attach it to the existing
-# virtual-server created by create-instance.
-export HOSTNAME INSTANCE_NAME HTTPS_PORT
-python3 - <<'PY'
+# Configure server.xml with default (classic) io-model on both HTTP and
+# HTTPS listeners.
+python3 - <<PY
 import os
 import xml.etree.ElementTree as ET
 
-path = 'config/server.xml'
+path = os.path.join("${CONFIG_DIR}", "server.xml")
 tree = ET.parse(path)
 root = tree.getroot()
 
-https_listener = ET.SubElement(root, 'http-listener')
-ET.SubElement(https_listener, 'name').text = 'https-listener-1'
-ET.SubElement(https_listener, 'port').text = os.environ['HTTPS_PORT']
-ET.SubElement(https_listener, 'server-name').text = os.environ['HOSTNAME']
-ET.SubElement(https_listener, 'default-virtual-server-name').text = os.environ['INSTANCE_NAME']
+tp = root.find("temp-path")
+if tp is None:
+    tp = ET.SubElement(root, "temp-path")
+tp.text = "${TEMP_DIR}"
 
-ssl = ET.SubElement(https_listener, 'ssl')
-ET.SubElement(ssl, 'enabled').text = 'true'
-ET.SubElement(ssl, 'server-cert-nickname').text = 'Server-Cert'
+plat = root.find("platform")
+if plat is None:
+    plat = ET.SubElement(root, "platform")
+plat.text = "64"
 
-# Find the existing virtual-server and add a reference to the HTTPS listener.
-for vs in root.findall('virtual-server'):
-    if vs.findtext('name') == os.environ['INSTANCE_NAME']:
-        ET.SubElement(vs, 'http-listener-name').text = 'https-listener-1'
-        break
+vs = root.find("virtual-server")
+vs_listeners = set()
+for el in vs.findall("http-listener-name"):
+    vs_listeners.add(el.text)
 
-tree.write(path, xml_declaration=True, encoding='UTF-8')
+for listener in list(root.findall("http-listener")):
+    name = listener.findtext("name")
+    if name == "http-listener-1":
+        port_el = listener.find("port")
+        if port_el is None:
+            port_el = ET.SubElement(listener, "port")
+        port_el.text = "${HTTP_PORT}"
+        for child in list(listener):
+            if child.tag == "io-model":
+                listener.remove(child)
+    elif name == "https-listener-1":
+        root.remove(listener)
+
+# HTTPS listener with default io-model (classic).
+https = ET.SubElement(root, "http-listener")
+ET.SubElement(https, "name").text = "https-listener-1"
+ET.SubElement(https, "port").text = "${HTTPS_PORT}"
+ET.SubElement(https, "server-name").text = "localhost"
+ET.SubElement(https, "default-virtual-server-name").text = "test"
+ssl = ET.SubElement(https, "ssl")
+ET.SubElement(ssl, "enabled").text = "true"
+ET.SubElement(ssl, "server-cert-nickname").text = "Server-Cert"
+
+if "https-listener-1" not in vs_listeners:
+    ET.SubElement(vs, "http-listener-name").text = "https-listener-1"
+
+with open(path, "wb") as f:
+    f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n')
+    tree.write(f, xml_declaration=False, encoding="UTF-8")
 PY
 
-# Tell the server where the NSS certificate database lives.
-echo "NSSDir ${PWD}" >> config/magnus.conf
-
-# Start the server.
+cd "${INSTANCE_DIR}"
 ulimit -n 4096
-./bin/startserv &
+"${INSTANCE_DIR}/bin/startserv" > /tmp/${INSTANCE}-tls.log 2>&1 &
 SERVER_PID=$!
 
-# Give the server time to start.
-sleep 5
-
-cleanup() {
-    if kill -0 "$SERVER_PID" 2>/dev/null; then
-        ./bin/stopserv 2>/dev/null || true
-        wait "$SERVER_PID" 2>/dev/null || true
+waited=0
+while [ "${waited}" -lt 20 ]; do
+    if ss -tln 2>/dev/null | grep -q ":${HTTPS_PORT} "; then
+        break
     fi
-    for pid in $(pgrep -f "webservd.*${INSTANCE_DIR}" 2>/dev/null || true); do
-        kill -9 "$pid" 2>/dev/null || true
-    done
-    rm -rf "${INSTANCE_DIR}" /tmp/tls-smoke.p12 /tmp/tls-smoke-key.pem /tmp/tls-smoke-cert.pem /tmp/tls-smoke-ca.pem
-}
-trap cleanup EXIT
+    sleep 1
+    waited=$((waited + 1))
+done
+if ! ss -tln 2>/dev/null | grep -q ":${HTTPS_PORT} "; then
+    echo "Server did not start listening on HTTPS port ${HTTPS_PORT}"
+    cat /tmp/${INSTANCE}-tls.log 2>/dev/null || true
+    exit 1
+fi
 
 # First verify the HTTP port is serving; if not, the server did not start.
-if ! curl -sf "http://localhost:${HTTP_PORT}" | grep -q Welcome; then
+if ! curl -sf "http://localhost:${HTTP_PORT}/" >/dev/null; then
     echo "Server failed to start on HTTP port ${HTTP_PORT}; aborting TLS tests."
     exit 1
 fi
 echo "HTTP listener OK"
-
-CA_FILE="/tmp/tls-smoke-ca.pem"
-certutil -L -d dbm:"." -n "Server-Cert" -a > "${CA_FILE}"
 
 run_client() {
     openssl s_client -connect "localhost:${HTTPS_PORT}" "$@" -CAfile "${CA_FILE}" </dev/null 2>/dev/null
@@ -137,6 +192,40 @@ echo "TLS 1.3 OK"
 # Verify ALPN negotiation advertises http/1.1.
 run_client -tls1_2 -alpn http/1.1 | grep -q 'ALPN protocol: http/1.1' || { echo "ALPN failed"; exit 1; }
 echo "ALPN http/1.1 OK"
+
+# Regression test (Ticket 15): on a TLS listener with default (classic)
+# io-model, when a client offers both h2 and http/1.1 via ALPN, the negotiated
+# protocol must be http/1.1 (never h2) and GET / must return 200 (not 505).
+python3 - <<PY
+import socket
+import ssl
+import sys
+
+host = 'localhost'
+port = ${HTTPS_PORT}
+ctx = ssl.create_default_context(cafile='${CA_FILE}')
+ctx.set_alpn_protocols(['h2', 'http/1.1'])
+
+with socket.create_connection((host, port), timeout=5) as raw:
+    with ctx.wrap_socket(raw, server_hostname=host) as sock:
+        negotiated = sock.selected_alpn_protocol()
+        if negotiated != 'http/1.1':
+            print(f'Expected ALPN http/1.1 on classic listener, got {negotiated!r}')
+            sys.exit(1)
+        sock.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+        resp = b''
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+
+status_line = resp.split(b'\r\n', 1)[0].decode('latin1', errors='replace')
+if not status_line.startswith('HTTP/1.1 200 '):
+    print(f'Expected HTTP/1.1 200 on classic listener, got: {status_line}')
+    sys.exit(1)
+print('Classic listener ALPN (client offered h2,http/1.1 -> http/1.1, GET -> 200) OK')
+PY
 
 # Verify legacy protocols are rejected.
 if run_client -tls1 | grep -q 'Verify return code: 0'; then

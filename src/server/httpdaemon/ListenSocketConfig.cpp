@@ -75,7 +75,11 @@ ListenSocketConfig::ListenSocketConfig(ServerXMLSchema::HttpListener& config, Se
     try
     {
         if (ssl.enabled)
-            sslparams_ = new SSLSocketConfiguration(ssl, pkcs11, this);
+        {
+            PRBool h2Enabled = (ioModel.getEnumValue() ==
+                                ServerXMLSchema::IoModel::IOMODEL_EVENT);
+            sslparams_ = new SSLSocketConfiguration(ssl, pkcs11, this, h2Enabled);
+        }
     }
     catch (...)
     {
