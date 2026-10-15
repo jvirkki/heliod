@@ -112,10 +112,9 @@ pristine checkout of `FROM` before being reported as ready.
 
 ## History note
 
-`v0.4` and `v0.5` were originally cut on separate branches
-(`build-modernization` and `protocol-modernization`) and predate the
-squash-merge rule, so the `v0.4..v0.5` range (and therefore the full
-bundles) still contains their development history. The history was
-re-parented when the repository was split so that `v0.3`, `v0.4` and
-`v0.5` form one ancestry on `master`; from `v0.5` onward every commit on
-`master` is a completed piece of work.
+`master` was squashed when the repository was split: `v0.3` is the last
+commit of the original history, and from there each release (`v0.4`,
+`v0.5`) and each completed piece of work since is exactly one commit.
+The development history behind 0.4 and 0.5 is kept on the private server
+only (`pre-protocol-modernization`, `phase1-cleaned`,
+`working-local-changes`) and is not part of any delivered bundle.
