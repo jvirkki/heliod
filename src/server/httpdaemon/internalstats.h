@@ -76,6 +76,7 @@ typedef struct keepAliveInfo {
     PRUint32      numKeepAliveRefusals;
     PRUint32      numKeepAliveTimeouts;
     PRUint32      tmoKeepAlive;
+    PRUint32      maxRequestsPerConnection;
 } keepAliveInfo;
 
 PRBool GetKeepAliveInfo(keepAliveInfo *info);

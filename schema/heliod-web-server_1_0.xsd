@@ -997,6 +997,20 @@
         </xs:appinfo>
       </xs:annotation>
     </xs:element>
+
+    <xs:element name="max-requests-per-connection" minOccurs="0">
+      <xs:annotation>
+        <xs:appinfo>
+          <appinfo:implicit>0</appinfo:implicit>
+        </xs:appinfo>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
   </xs:all>
 </xs:complexType>
 
@@ -2559,6 +2573,15 @@
     <xs:element name="receive-buffer-size" type="sizeType" minOccurs="0"/>
 
     <xs:element name="send-buffer-size" type="sizeType" minOccurs="0"/>
+
+    <xs:element name="max-requests-per-connection" minOccurs="0">
+      <xs:simpleType>
+        <xs:restriction base="xs:integer">
+          <xs:minInclusive value="0"/>
+          <xs:maxInclusive value="1048576"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:element>
 
     <xs:element name="default-virtual-server-name" type="nameType"/>
 

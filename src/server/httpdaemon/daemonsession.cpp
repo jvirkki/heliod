@@ -80,6 +80,7 @@ static const PRInt32 CLEANUP_BUFFER_SIZE = 65536;
 
 /* Controlled by magnus.conf "KeepAliveTimeout" (in seconds) */
 PRUint32 DaemonSession::keepAliveTimeout_;
+PRUint32 DaemonSession::maxRequestsPerConnection_ = 0;
 
 PRUint32 DaemonSession::ioTimeoutSeconds_;
 PRIntervalTime DaemonSession::ioTimeoutInterval_;
@@ -186,6 +187,10 @@ DaemonSession::ConfigureEarly(const ServerXMLSchema::Server& server)
 void
 DaemonSession::ConfigureLate(const ServerXMLSchema::KeepAlive& keepAlive, PRInt32 nMaxKeepAliveConnections, PRInt32 nMaxQueued)
 {
+    // Per-connection request cap (0 = unlimited). Honoured by both HTTP/1.1
+    // keep-alive and HTTP/2 streams unless overridden on <http-listener>.
+    maxRequestsPerConnection_ = (PRUint32)((PRInt32)keepAlive.maxRequestsPerConnection);
+
     // Keep-alive
     if (keepAlive.enabled) {
         // Keep-alive connection inactivity timeout
@@ -1157,6 +1162,9 @@ DaemonSession::HandleKeepAlive(void)
 PRBool
 DaemonSession::RequestKeepAlive(PRBool fKeepAlive)
 {
+    if (fKeepAlive && conn && conn->isMaxRequestsReached())
+        fKeepAlive = PR_FALSE;
+
     if (conn->fEventDriven) {
         // Event-driven connections do not use the classic keep-alive poll
         // subsystem; their idle-wait is handled by the event loop. Grant or
@@ -1189,6 +1197,7 @@ DaemonSession::GetKeepAliveInfo(keepAliveInfo *info)
 
     info->tmoKeepAlive = keepAliveTimeout_;
     info->maxKeepAlives = nMaxKeepAliveConnections_;
+    info->maxRequestsPerConnection = maxRequestsPerConnection_;
 
     if (pollManager_)
         rv = pollManager_->GetKeepAliveInfo(info);
@@ -1351,6 +1360,12 @@ DaemonSession::SetKeepAliveTimeout(const PRUint32 seconds)
 {
     /* Setting the timeout to zero disables keepalive */
     keepAliveTimeout_ = seconds;
+}
+
+void
+DaemonSession::SetMaxRequestsPerConnection(const PRUint32 maxRequests)
+{
+    maxRequestsPerConnection_ = maxRequests;
 }
 
 PRBool

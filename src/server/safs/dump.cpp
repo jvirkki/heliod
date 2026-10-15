@@ -302,13 +302,15 @@ int write_stats_dump(PRFileDesc *fd, StatsHeaderNode *hdr)
                        "------------------------\n"
                        "Address                   %s://%s:%hu\n"
                        "Acceptor Threads          %d\n"
-                       "Default Virtual Server    %s\n",
+                       "Default Virtual Server    %s\n"
+                       "MaxRequestsPerConnection  %lu\n",
                        ls->id,
                        ls->flagSecure ? "https" : "http",
                        szAddress,
                        PR_ntohs(ls->address.inet.port),
                        ls->countAcceptors,
-                       ls->defaultVsId
+                       ls->defaultVsId,
+                       (unsigned long)ls->maxRequestsPerConnection
                     );
             lsNode = lsNode->next;
         }
@@ -336,14 +338,16 @@ int write_stats_dump(PRFileDesc *fd, StatsHeaderNode *hdr)
                    "KeepAliveFlushes      %llu\n"
                    "KeepAliveRefusals     %llu\n"
                    "KeepAliveTimeouts     %llu\n"
-                   "KeepAliveTimeout      %lu seconds\n",
+                   "KeepAliveTimeout      %lu seconds\n"
+                   "MaxRequestsPerConn    %lu\n",
                    keepalives.countConnections,
                    keepalives.maxConnections,
                    keepalives.countHits,
                    keepalives.countFlushes,
                    keepalives.countRefusals,
                    keepalives.countTimeouts,
-                   keepalives.secondsTimeout);
+                   keepalives.secondsTimeout,
+                   (unsigned long)keepalives.maxRequestsPerConnection);
     }
 
     // Session Creation Info

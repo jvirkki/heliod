@@ -492,6 +492,12 @@ private:
     // session itself.
     std::map<uint32_t, H2Stream*> streams_;
 
+    // Count of client-initiated streams opened on this session, and whether
+    // the connection's max-requests-per-connection cap has been reached
+    // (GOAWAY submitted with the Nth stream's id).  Driver-only.
+    PRUint32 streamsOpened_;
+    PRBool maxStreamsReached_;
+
     // Stream ids we refused (RST_STREAM already submitted) because a stream
     // could not be created -- almost always the process-wide stream pool being
     // at its cap.  Driver-only, like streams_.  createStream() is called more

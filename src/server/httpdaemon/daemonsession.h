@@ -179,6 +179,9 @@ class HTTPDAEMON_DLL DaemonSession : public Thread, public StatsSession
         static PRUint32 GetKeepAliveTimeout(void);
         static void SetKeepAliveTimeout(const PRUint32 seconds);
 
+        static PRUint32 GetMaxRequestsPerConnection(void);
+        static void SetMaxRequestsPerConnection(const PRUint32 maxRequests);
+
         /**
          * Returns a pointer to the thread-safe queue onto which Acceptor/
          * KeepAlive threads enqueue incoming/returning connection and from 
@@ -257,6 +260,7 @@ private:
         static PRIntervalTime closeTimeoutInterval_;
 
         static PRUint32 keepAliveTimeout_;
+        static PRUint32 maxRequestsPerConnection_;
         static PRBool fPollInDaemonSession_;
 
         static PRBool fTestedTCPNagle;
@@ -480,6 +484,13 @@ PRUint32
 DaemonSession::GetKeepAliveTimeout(void)
 {
     return keepAliveTimeout_;
+}
+
+inline
+PRUint32
+DaemonSession::GetMaxRequestsPerConnection(void)
+{
+    return maxRequestsPerConnection_;
 }
 
 

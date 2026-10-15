@@ -1201,6 +1201,7 @@ void StatsManager::pollStats(void)
         keepalive->countTimeouts = infoKeepalive.numKeepAliveTimeouts;
         keepalive->secondsTimeout = infoKeepalive.tmoKeepAlive;
         keepalive->countRefusals = infoKeepalive.numKeepAliveRefusals;
+        keepalive->maxRequestsPerConnection = infoKeepalive.maxRequestsPerConnection;
     }
 
     // Update StatsVirtualServerSlots

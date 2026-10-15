@@ -1,7 +1,31 @@
 2026-10-15  Joe McCabe <joe@jmccabe.org>
 
+        * Feature: add configurable per-connection request cap
+          (<max-requests-per-connection>) for HTTP/1.1 keep-alive and
+          HTTP/2 streams.
+
+            Adds <max-requests-per-connection> (0..1048576, default 0 =
+            unlimited) to both <keep-alive> and <http-listener> in
+            server.xml, with a per-listener setting overriding the
+            server-wide <keep-alive> default.  For HTTP/1.1, Connection
+            tracks numRequests and DaemonSession::RequestKeepAlive()
+            declines keep-alive once the cap is reached so the Nth
+            response carries Connection: close and the socket is closed
+            rather than returned to PollManager or EventLoop (covering
+            classic, event, accelerated, and KAPollThread async-accel
+            paths).  For HTTP/2, H2Session counts client streams in
+            createStream(), submits GOAWAY(last_stream_id, NO_ERROR) on
+            the Nth stream, refuses any excess streams in flight with
+            RST_STREAM(REFUSED_STREAM), and closes the connection once
+            the Nth stream completes.  Reported in /perfdump
+            (MaxRequestsPerConn in KeepAliveInfo and
+            MaxRequestsPerConnection per ListenSocket) and /.perf XML.
+
+
+2026-10-15  Joe McCabe <joe@jmccabe.org>
+
         * Bug fix: gate ALPN "h2" advertisement and selection on the
-          owning listener's io-model (Ticket 15).
+          owning listener's io-model.
 
             ListenSocketConfig now passes h2Enabled (true only when
             io-model is "event") into SSLSocketConfiguration, which

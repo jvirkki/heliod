@@ -316,7 +316,7 @@ check "mixed: event worker pool grows under load" \
 DSP=$(ds_peak); DSP=${DSP:-0}
 check "mixed: event traffic still does not grow classic pool" \
       "$([ "${DSP}" -le "${MIN_THREADS}" ] && echo 0 || echo 1)" \
-      "(ds_peak=${DSP}, startup min-floor spawn of ${MIN_THREADS} is expected) -- ticket 20"
+      "(ds_peak=${DSP}, startup min-floor spawn of ${MIN_THREADS} is expected)"
 
 for i in $(seq 1 ${CONCURRENCY}); do
     curl -s -o /dev/null "${BASE2}/cgi-bin/slow.py?${SLOW_SECS}" &

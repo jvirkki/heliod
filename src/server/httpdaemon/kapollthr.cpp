@@ -439,6 +439,13 @@ KAPollThread::ClassifyRequest(AcceleratorAsync *async, Connection *connection)
     if (!accel_is_eligible(connection))
         return REQUEST_QUEUE;
 
+    // If this request will reach the connection's max-requests-per-connection
+    // cap, hand it to a DaemonSession worker so the response carries
+    // Connection: close and the connection is closed rather than re-armed.
+    PRUint32 maxReq = connection->maxRequests();
+    if (maxReq > 0 && connection->numRequests + 1 >= maxReq)
+        return REQUEST_QUEUE;
+
     // Check whether a response to this request has already been cached
     if (!accel_async_lookup(async, connection, GetVS(connection))) {
         // XXX elving don't parse the HTTP request again in the DaemonSession
@@ -505,6 +512,7 @@ KAPollThread::AcceleratedRespond(PRInt32 numAcceleratable, AcceleratorAsync *asy
         case ACCEL_ASYNC_DONE:
             // We processed the request, so indicate the input buffer is empty
             connection->async.inbuf.cursize = 0;
+            connection->numRequests++;
 
             // Track how often we process a request on a connection that had
             // been kept alive

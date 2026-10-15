@@ -290,6 +290,24 @@ and HTTP/2:
   flight (50 × 32 = 1600) against HTTP/1.1's 50, so each request queues behind its
   siblings.  Comparing latency between the arms is only meaningful at matched
   concurrency (`-m 1` for the h2 arm).
+- `max_requests_smoke.sh <work-root>` — per-connection request cap
+  (`max-requests-per-connection`).  Configures `<keep-alive>` with
+  `<max-requests-per-connection>3</max-requests-per-connection>` and four plain
+  listeners: a classic listener on 18180 and an event listener on 18181
+  (inheriting the global cap of 3), an event listener on 18182 with a
+  per-listener `<max-requests-per-connection>2</max-requests-per-connection>`
+  override, and an event listener on 18183 with an explicit `0` (unlimited)
+  override.  Verifies: (1) `/perfdump` reports `MaxRequestsPerConn` in
+  `KeepAliveInfo` and `MaxRequestsPerConnection` on each `ListenSocket`; (2) on
+  both classic and event HTTP/1.1 listeners, requests `1..N-1` on one socket are
+  served keep-alive, the `N`th response carries `Connection: close`, and an
+  `(N+1)`th request on the same socket is not served (tested both sequentially
+  and with `N+1` pipelined requests in a single write); (3) over HTTP/2 (`h2c`),
+  `N` sequential streams return 200 and the server sends
+  `GOAWAY(last_stream_id=2N-1, NO_ERROR)` and closes the connection, while an
+  `(N+1)`th stream sent in the same flight before `GOAWAY` is refused and not
+  served; (4) the per-listener overrides (`2` and `0` unlimited) take precedence
+  over `<keep-alive>` for both HTTP/1.1 and HTTP/2.  Reuses `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 

@@ -475,6 +475,11 @@ HttpRequest::HandleRequest(netbuf *buf, PRIntervalTime timeout)
         if (fQOS)
             vs->getTrafficStats().recordBytes(buf->pos);
 
+        // Count requests served on this connection before evaluating keep-alive
+        // so that the Nth request sees numRequests == N and sends Connection: close.
+        if (pSession->conn)
+            pSession->conn->numRequests++;
+
         // Did the client request keep-alive and is there room in the
         // keep-alive subsystem for another connection?
         fKeepAliveRequested = pSession->RequestKeepAlive(rqHdr->IsKeepAliveRequested());

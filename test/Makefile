@@ -215,6 +215,15 @@ test-fastcgi-h2:
 	$(BUILD_ROOT)/test/fastcgi_h2_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- FastCGI-over-HTTP/2 test finished -----"
 
+# Per-connection request cap test: verifies max-requests-per-connection
+# across classic HTTP/1.1, event HTTP/1.1, HTTP/2 GOAWAY, per-listener overrides,
+# and /perfdump.
+test-max-requests:
+	@echo "----- Running max-requests-per-connection test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/max_requests_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- max-requests-per-connection test passed -----"
+
 # Event I/O smoke test (uses the https-test instance from make install).
 test-event:
 	@echo "----- Running event I/O smoke test -----"

@@ -123,6 +123,8 @@ typedef struct _StatsListenSlot {
     char     reserved3[3];
     char     defaultVsId[129];
     char     reserverd[7];
+    PRUint32 maxRequestsPerConnection;
+    PRUint32 reserved4;
 
     /* Note: this structure may grow in future versions */
 } StatsListenSlot;
@@ -232,6 +234,8 @@ typedef struct _StatsKeepaliveBucket {
     PRUint64 countFlushes;
     PRUint64 countTimeouts;
     PRUint64 countRefusals;
+    PRUint32 maxRequestsPerConnection;
+    PRUint32 reserved;
 } StatsKeepaliveBucket;
 
 /* 

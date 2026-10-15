@@ -193,7 +193,7 @@ echo "TLS 1.3 OK"
 run_client -tls1_2 -alpn http/1.1 | grep -q 'ALPN protocol: http/1.1' || { echo "ALPN failed"; exit 1; }
 echo "ALPN http/1.1 OK"
 
-# Regression test (Ticket 15): on a TLS listener with default (classic)
+# Regression test: on a TLS listener with default (classic)
 # io-model, when a client offers both h2 and http/1.1 via ALPN, the negotiated
 # protocol must be http/1.1 (never h2) and GET / must return 200 (not 505).
 python3 - <<PY

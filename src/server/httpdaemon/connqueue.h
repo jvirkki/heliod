@@ -257,6 +257,24 @@ class Connection
     PRUint32 keepAliveTimeout;
 
     /**
+     * Number of HTTP/1.x requests or HTTP/2 streams served on this connection
+     * since it was accepted.
+     */
+    PRUint32 numRequests;
+
+    /**
+     * Effective cap on requests/streams served on this connection (0 = unlimited).
+     * A per-listener <max-requests-per-connection> overrides the server-wide
+     * <keep-alive><max-requests-per-connection> setting.
+     */
+    PRUint32 maxRequests() const;
+
+    /**
+     * Whether this connection has reached its configured request cap.
+     */
+    PRBool isMaxRequestsReached() const;
+
+    /**
      * HTTP request parser for this connection
      */
     HttpHeader httpHeader;

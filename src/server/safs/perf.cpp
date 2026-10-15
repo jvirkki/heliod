@@ -158,6 +158,7 @@ static char dtd[] =
 "          countRefusals CDATA #REQUIRED\n"
 "          countTimeouts CDATA #REQUIRED\n"
 "          secondsTimeout CDATA #REQUIRED\n"
+"          maxRequestsPerConnection CDATA #REQUIRED\n"
 ">\n"
 "\n"
 "<!ELEMENT cache-bucket EMPTY>\n"
@@ -913,6 +914,7 @@ static void outputKeepAliveBucket(XMLOutput &xml, PList_t qlist, StatsProcessNod
     xml.attribute("countRefusals", keepalive->countRefusals);
     xml.attribute("countTimeouts", keepalive->countTimeouts);
     xml.attribute("secondsTimeout", keepalive->secondsTimeout);
+    xml.attribute("maxRequestsPerConnection", keepalive->maxRequestsPerConnection);
     xml.endElement("keepalive-bucket");
 }
 

@@ -338,6 +338,10 @@ ListenSockets::addNewSockets(Configuration& newConfig, PRBool* lsExists,
             strncpy(statsLSS->defaultVsId,
                     newLSC->defaultVirtualServerName.getStringValue(),
                     nVsIdSize -1);
+            if (newLSC->getMaxRequestsPerConnection())
+                statsLSS->maxRequestsPerConnection = (PRUint32)((PRInt32)(*newLSC->getMaxRequestsPerConnection()));
+            else
+                statsLSS->maxRequestsPerConnection = (PRUint32)((PRInt32)newConfig.keepAlive.maxRequestsPerConnection);
             statsLSS->mode = STATS_LISTEN_ACTIVE;
         }
 

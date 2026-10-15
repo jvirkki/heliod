@@ -40,6 +40,7 @@
 #include "httpdaemon/libdaemon.h"
 #include "httpdaemon/dbthttpdaemon.h"
 #include "httpdaemon/connqueue.h"
+#include "httpdaemon/daemonsession.h"
 #include "httpdaemon/H2Session.h"
 #include "httpdaemon/statsmanager.h"
 #include "httpdaemon/ListenSocket.h"
@@ -394,6 +395,7 @@ ConnectionQueue::logOverflow() {
 Connection::Connection()
 {
     connQueue = NULL;
+    numRequests = 0;
     async.inbuf.buf = NULL;
     async.inbuf.cursize = 0;
     async.inbuf.maxsize = 0;
@@ -428,6 +430,7 @@ Connection::~Connection()
 PRStatus Connection::create(PRFileDesc* fd_, const PRNetAddr *addr, ListenSocket* ls_)
 {
     fd = fd_;
+    numRequests = 0;
     fNewlyAccepted = PR_TRUE;
     fSSLEnabled = PR_FALSE;
     fUncleanShutdown = PR_FALSE;
@@ -616,3 +619,17 @@ PRIntervalTime Connection::elapsed() const
 
     return now - ticks;
 }
+
+PRUint32 Connection::maxRequests() const
+{
+    if (lsConfig && lsConfig->getMaxRequestsPerConnection())
+        return (PRUint32)((PRInt32)(*lsConfig->getMaxRequestsPerConnection()));
+    return DaemonSession::GetMaxRequestsPerConnection();
+}
+
+PRBool Connection::isMaxRequestsReached() const
+{
+    PRUint32 limit = maxRequests();
+    return (limit > 0 && numRequests >= limit) ? PR_TRUE : PR_FALSE;
+}
+

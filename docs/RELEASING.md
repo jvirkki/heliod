@@ -7,7 +7,7 @@ recipients who do not have access to the local project's git server.
 
 - **`master`** is the delivery line. Nothing is developed on it directly;
   it only ever advances by **squash-merging** a finished piece of work, so
-  its history is one commit per completed ticket or feature. Every
+  its history is one commit per completed change or feature. Every
   release is tagged on `master`, and every bundle or patch is generated
   from those tags. Recipients therefore see completed work only — never
   the intermediate commits made while getting there.
@@ -16,7 +16,7 @@ recipients who do not have access to the local project's git server.
   server as often as you like. That history stays private.
 - When a piece of work is complete (built, tested, ChangeLog entry
   written), squash-merge the working branch into `master` as a single
-  commit whose message describes the completed work (e.g. the ticket).
+  commit whose message describes the completed work.
 
 Because a squash commit has no merge parent, the working branch must be
 re-based on `master` immediately after each squash merge; otherwise the
@@ -33,7 +33,7 @@ squash-merge again, and cut a new tag.
 # On the working branch: work is built, tested, ChangeLog entry committed.
 git checkout master
 git merge --squash protocol-modernization
-git commit            # one commit: "Ticket 15: gate ALPN h2 on io-model" ...
+git commit            # one commit: "Gate ALPN h2 on io-model" ...
 git push origin master
 
 # Re-base the working branch on master so the next squash merge is clean.
@@ -42,7 +42,7 @@ git reset --hard master
 git push --force origin protocol-modernization
 ```
 
-A fresh branch per ticket (`git checkout -b ticket-15 master`), deleted
+A fresh branch per change (`git checkout -b alpn-h2-io-model master`), deleted
 after its squash merge, works the same way and avoids the reset step.
 
 ## Cutting a release

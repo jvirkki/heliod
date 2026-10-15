@@ -398,6 +398,7 @@ H2Session::H2Session(Connection* conn)
       prefaceHave_(0), prefaceDone_(PR_FALSE),
       bytesRead_(0), readWouldBlock_(PR_FALSE), writeWouldBlock_(PR_FALSE),
       peerClosed_(PR_FALSE),
+      streamsOpened_(0), maxStreamsReached_(PR_FALSE),
       inFlight_(0), driving_(PR_FALSE), wantClose_(PR_FALSE),
       parked_(PR_FALSE), redrive_(PR_FALSE), driver_(NULL)
 {
@@ -1209,6 +1210,19 @@ H2Stream* H2Session::createStream(uint32_t streamId)
     if (refusedStreams_.find(streamId) != refusedStreams_.end())
         return NULL;
 
+    // Past the per-connection stream cap (GOAWAY already submitted with the
+    // Nth stream's id).  Refuse any further stream opened before the peer saw
+    // our GOAWAY.
+    if (maxStreamsReached_) {
+        nghttp2_session* s = (nghttp2_session*)session_;
+        if (s) {
+            nghttp2_submit_rst_stream(s, NGHTTP2_FLAG_NONE, streamId,
+                                      NGHTTP2_REFUSED_STREAM);
+        }
+        refusedStreams_.insert(streamId);
+        return NULL;
+    }
+
     H2Stream* stream = new H2Stream(streamId, this);
     if (stream->init(connection_) != PR_SUCCESS) {
         // Distinguish "the server is globally full" from a genuine internal
@@ -1234,6 +1248,23 @@ H2Stream* H2Session::createStream(uint32_t streamId)
         return NULL;
     }
     streams_[streamId] = stream;
+    streamsOpened_++;
+    if (connection_)
+        connection_->numRequests = streamsOpened_;
+
+    PRUint32 maxReq = connection_ ? connection_->maxRequests() : 0;
+    if (maxReq > 0 && streamsOpened_ >= maxReq) {
+        maxStreamsReached_ = PR_TRUE;
+        nghttp2_session* s = (nghttp2_session*)session_;
+        if (s) {
+            ereport(LOG_VERBOSE,
+                    "H2Session: max-requests-per-connection (%u) reached at "
+                    "stream %u on conn=%p; sending GOAWAY",
+                    maxReq, streamId, connection_);
+            nghttp2_submit_goaway(s, NGHTTP2_FLAG_NONE, streamId,
+                                  NGHTTP2_NO_ERROR, NULL, 0);
+        }
+    }
     return stream;
 }
 
@@ -1344,8 +1375,11 @@ void H2Session::queueStreamForDispatch(uint32_t streamId)
 {
     H2Stream* stream = getStream(streamId);
     if (!stream) {
-        ereport(LOG_WARN,
-                "H2Session: END_STREAM for unknown stream %u", streamId);
+        if (refusedStreams_.find(streamId) == refusedStreams_.end() &&
+            !maxStreamsReached_) {
+            ereport(LOG_WARN,
+                    "H2Session: END_STREAM for unknown stream %u", streamId);
+        }
         return;
     }
 
@@ -1655,6 +1689,10 @@ PRBool H2Session::driveForProducer(H2Stream* stream, PRBool waitForSpace)
 
         if (result == H2_CLOSE) {
             beginClose();
+            if (stream->bodyDelivered()) {
+                ok = PR_TRUE;
+                break;
+            }
             why = "the session is closing";
             ok = PR_FALSE;
             break;
@@ -2065,6 +2103,10 @@ void H2Session::drive(void)
         }
 
         XP_Unlock(&lock_);
+        if (maxStreamsReached_ && streams_.empty() &&
+            result == H2_WANT_READ) {
+            result = H2_CLOSE;
+        }
         break;
     }
 

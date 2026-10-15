@@ -299,6 +299,7 @@ PRStatus H2Stream::init(Connection* parentConn)
     connection_->connQueue = NULL;
     connection_->next = NULL;
     connection_->keepAliveTimeout = parentConn->keepAliveTimeout;
+    connection_->numRequests = 0;
 
     streamSocket_ = H2StreamSocket::create(this);
     if (!streamSocket_)

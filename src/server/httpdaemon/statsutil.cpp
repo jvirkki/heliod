@@ -632,6 +632,7 @@ void StatsManagerUtil::accumulateKeepAlive(StatsKeepaliveBucket* sum,
     sum->countTimeouts    += delta->countTimeouts;
     sum->secondsTimeout    = delta->secondsTimeout;
     sum->countRefusals    += delta->countRefusals;
+    sum->maxRequestsPerConnection = delta->maxRequestsPerConnection;
 }
 
 //-----------------------------------------------------------------------------
