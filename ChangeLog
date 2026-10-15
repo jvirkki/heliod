@@ -1,8 +1,28 @@
 2026-10-15  Joe McCabe <joe@jmccabe.org>
 
-        * Feature: add configurable per-connection request cap
+        * Security / bug fix: bound byte-range count and reject
+          overlapping, descending, or amplifying Range headers in
+          send-file / send-range (Oracle 12919334; CVE-2011-3192).
+
+            _ranges_parse() in src/server/safs/service.cpp now enforces a
+            cap on the number of byte-range specifiers per request
+            (DEFAULT_MAX_RANGES = 20, overridable via the max-ranges
+            parameter on send-file and send-range in obj.conf) before
+            allocating range nodes, and rejects overlapping ranges,
+            descending/out-of-order ranges, or range sets whose combined
+            length exceeds the file size by returning 0 so
+            _range_service() returns REQ_NOACTION and send-file serves a
+            normal 200 OK full response.  Also fixes a heap leak of
+            previously parsed _range_element nodes when a later range in a
+            multi-range header is malformed, preserves
+            PROTOCOL_REQUESTED_RANGE_NOT_SATISFIABLE across loop
+            iterations, clamps overflowing 64-bit offsets, and suppresses
+            the trailing multipart boundary on HEAD multi-range responses.
+
+        * Security / Feature: add configurable per-connection request cap
           (<max-requests-per-connection>) for HTTP/1.1 keep-alive and
-          HTTP/2 streams.
+          HTTP/2 streams (Oracle 13079329, 13355817, 13455620,
+          13889880; CVE-2011-3389).
 
             Adds <max-requests-per-connection> (0..1048576, default 0 =
             unlimited) to both <keep-alive> and <http-listener> in
@@ -20,9 +40,6 @@
             the Nth stream completes.  Reported in /perfdump
             (MaxRequestsPerConn in KeepAliveInfo and
             MaxRequestsPerConnection per ListenSocket) and /.perf XML.
-
-
-2026-10-15  Joe McCabe <joe@jmccabe.org>
 
         * Bug fix: gate ALPN "h2" advertisement and selection on the
           owning listener's io-model.

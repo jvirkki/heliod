@@ -308,6 +308,24 @@ and HTTP/2:
   `(N+1)`th stream sent in the same flight before `GOAWAY` is refused and not
   served; (4) the per-listener overrides (`2` and `0` unlimited) take precedence
   over `<keep-alive>` for both HTTP/1.1 and HTTP/2.  Reuses `https-test`.
+- `range_smoke.sh <work-root>` — byte-range requests and `Range` header DoS
+  protection (`safs/service.cpp`).  Exercises both `io-model=classic` (18180)
+  and `io-model=event` (18181) listeners against deterministic static payloads:
+  (1) valid single ranges (prefix, middle with whitespace, open-ended, suffix,
+  and clamped past-EOF end) return `206 Partial Content` with exact
+  `Content-Range`, `Content-Length`, and body slices; (2) valid ascending
+  non-overlapping multi-range requests return `206` `multipart/byteranges` with
+  each part verified, and `HEAD` multi-range over keep-alive emits no stray
+  closing boundary; (3) unsatisfiable ranges (`bytes=5000-6000`, `bytes=-0`,
+  64-bit overflow offsets) return `416 Requested range not satisfiable` with
+  `Content-Range: bytes */<size>`, or fall back to `200 OK` when `If-Range` is
+  present; (4) abusive `Range` headers — 21 ranges past the default cap of 20,
+  1000-range disjoint and open-ended headers (CVE-2011-3192 pattern),
+  overlapping ranges, descending/out-of-order ranges, amplification ranges whose
+  sum exceeds file size, and malformed multi-range headers — fall back to a full
+  `200 OK` response in bounded time (< 1.0s); (5) a `<Client>` rule with
+  `Service fn="send-file" max-ranges="3"` serves 3 ranges as `206` and 4 ranges
+  as `200 OK`.  Reuses `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 
@@ -441,6 +459,8 @@ make -C test test-compression   # run compression_smoke.sh (gzip + brotli + zstd
 make -C test test-worker-pool   # run worker_pool_smoke.sh (event pool growth)
 make -C test test-h2-idle       # run h2_idle_timeout_smoke.sh
 make -C test test-fastcgi-h2    # run fastcgi_h2_smoke.sh (needs php-fpm; else SKIPs)
+make -C test test-max-requests  # run max_requests_smoke.sh
+make -C test test-range         # run range_smoke.sh (byte-range + Range DoS cap)
 ```
 
 ### Rebuilding after a header change

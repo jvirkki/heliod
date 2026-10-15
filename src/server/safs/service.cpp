@@ -91,11 +91,59 @@ static inline char *get_path(const char *fn, Session *sn, Request *rq)
 
 /* ------------------------- service_plain_range -------------------------- */
 
+#define DEFAULT_MAX_RANGES 20
+
 typedef struct _range_element_t {
     _range_element_t *next;
     PROffset64       start;
     PROffset64       end;
 } _range_element;
+
+
+static int
+_get_max_ranges(pblock *param)
+{
+    const char *val = param ? pblock_findval("max-ranges", param) : NULL;
+    if (!val || !*val)
+        return DEFAULT_MAX_RANGES;
+
+    char *endptr = NULL;
+    long n = strtol(val, &endptr, 10);
+    if (endptr == val || *endptr != '\0' || n < 0)
+        return DEFAULT_MAX_RANGES;
+    if (n > INT_MAX)
+        return INT_MAX;
+    return (int)n;
+}
+
+
+static PRBool
+_parse_range_offset(const char *s, PROffset64 *out)
+{
+    if (!isdigit((unsigned char)*s))
+        return PR_FALSE;
+
+    PROffset64 val = 0;
+    const PROffset64 max_div10 = LL_MAXINT / 10;
+    const PROffset64 max_mod10 = LL_MAXINT % 10;
+
+    while (isdigit((unsigned char)*s)) {
+        int d = *s - '0';
+        if (val > max_div10 || (val == max_div10 && d > max_mod10)) {
+            val = LL_MAXINT;
+        } else {
+            val = val * 10 + d;
+        }
+        s++;
+    }
+    while (isspace((unsigned char)*s))
+        s++;
+    if (*s != '\0')
+        return PR_FALSE;
+
+    *out = val;
+    return PR_TRUE;
+}
 
 
 static int
@@ -108,6 +156,10 @@ _range_validate(_range_element *a_range, const PRFileInfo64 *finfo, int *status)
 
            /* Range: bytes=-500 (last 500 bytes) */
     if (a_range->start == -1) {
+        if (a_range->end <= 0 || finfo->size == 0) {
+            *status = PROTOCOL_REQUESTED_RANGE_NOT_SATISFIABLE;
+            return -1;
+        }
         a_range->start = finfo->size - a_range->end;
         if (a_range->start < 0 && finfo->size != 0)
             a_range->start = 0;
@@ -146,11 +198,13 @@ _ranges_free(_range_element *head)
  * in any case, caller need to free the linked-list pointed by *head
  */
 static int 
-_ranges_parse(_range_element **head, char *range_hdr, PRFileInfo64 *finfo, int *status)  
+_ranges_parse(_range_element **head, char *range_hdr, PRFileInfo64 *finfo, int max_ranges, int *status)  
 {
 
-    int     num_ranges = 0, a_status = PROTOCOL_OK;
+    int     num_ranges = 0, seen_ranges = 0, a_status = PROTOCOL_OK;
+    PROffset64 total_bytes = 0;
     PRBool  more = PR_TRUE;
+    PRBool  saw_unsatisfiable = PR_FALSE;
     char   *range = range_hdr;
     _range_element *ranges_tail = NULL, *ranges_head = NULL;
 
@@ -158,6 +212,9 @@ _ranges_parse(_range_element **head, char *range_hdr, PRFileInfo64 *finfo, int *
 
     *head = NULL;
     *status = PROTOCOL_OK;
+
+    if (max_ranges <= 0)
+        return 0;
 
     if (range && strchr(range, ';')) {
               /* According to draft... */
@@ -172,7 +229,6 @@ _ranges_parse(_range_element **head, char *range_hdr, PRFileInfo64 *finfo, int *
         if (more == PR_FALSE)
             break;
 
-        *status = PROTOCOL_OK;
         ptr = strchr(range, ',');
         next = ptr;
         if (ptr) {
@@ -183,65 +239,94 @@ _ranges_parse(_range_element **head, char *range_hdr, PRFileInfo64 *finfo, int *
         if (!(next && *next))     /* no more ranges */
             more = PR_FALSE;
 
+        seen_ranges++;
+        if (seen_ranges > max_ranges) {
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
+            return 0;
+        }
+
         ptr = strchr(range, '-'); 
-        if (! (ptr && *ptr))
+        if (! (ptr && *ptr)) {
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
             return -1;           /* syntax error in Range request header */
+        }
 
-        if (*(ptr+1) && strchr(ptr+1, '-') != NULL)
+        if (*(ptr+1) && strchr(ptr+1, '-') != NULL) {
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
             return -1;
+        }
 
-        while (isspace(*range))
+        *ptr = '\0';
+        while (isspace((unsigned char)*range))
             range++;
 
         a_range = (_range_element *)MALLOC(sizeof(_range_element));
-        if (a_range == NULL)
+        if (a_range == NULL) {
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
             return -1;
+        }
         
         a_range->next = NULL;
         a_range->start = -1;
         a_range->end = -1;
 
-        if (*range == '-') {
+        if (*range == '\0') {
             a_range->start = -1;
         }
-        else if (isdigit(*range)) {
-            a_range->start = util_atoi64(range);
-        }
-        else {
+        else if (!_parse_range_offset(range, &a_range->start)) {
             FREE(a_range);
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
             return -1;
         }
 
         range = ++ptr;
-        while (isspace(*range))
+        while (isspace((unsigned char)*range))
             range++;
         if (!(*range)) {
             if (a_range->start == -1) { /* bytes= - syntax error */
                 FREE(a_range);
+                _ranges_free(ranges_head);
+                *status = PROTOCOL_OK;
                 return -1;
             }
             a_range->end = finfo->size - 1;
         }
-        else if (isdigit(*range)) {
-            a_range->end = util_atoi64(range);
-        }
-        else {
+        else if (!_parse_range_offset(range, &a_range->end)) {
             FREE(a_range);
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
             return -1;
         }
 
         if (_range_validate(a_range, finfo, &a_status) != 0) {
             FREE(a_range);
             if (a_status == PROTOCOL_REQUESTED_RANGE_NOT_SATISFIABLE) {
-                *status = PROTOCOL_REQUESTED_RANGE_NOT_SATISFIABLE;
+                saw_unsatisfiable = PR_TRUE;
                 a_status = PROTOCOL_OK;
                 range = next;
                 continue;
             }
             else {
+                _ranges_free(ranges_head);
+                *status = PROTOCOL_OK;
                 return -1;
             }
         }
+
+        PROffset64 range_len = a_range->end - a_range->start + 1;
+        if ((ranges_tail != NULL && a_range->start <= ranges_tail->end) ||
+            range_len > finfo->size - total_bytes) {
+            FREE(a_range);
+            _ranges_free(ranges_head);
+            *status = PROTOCOL_OK;
+            return 0;
+        }
+        total_bytes += range_len;
 
         if (ranges_tail == NULL && ranges_head == NULL) {
             ranges_head=ranges_tail=a_range;
@@ -254,6 +339,8 @@ _ranges_parse(_range_element **head, char *range_hdr, PRFileInfo64 *finfo, int *
         num_ranges++;
         range = next;
     }
+    if (num_ranges == 0 && saw_unsatisfiable)
+        *status = PROTOCOL_REQUESTED_RANGE_NOT_SATISFIABLE;
     *head = ranges_head;
     PR_ASSERT(*head == NULL || num_ranges > 0);
 
@@ -286,7 +373,7 @@ static int _range_send(SYS_FILE fd, SYS_NETFD sd, PROffset64 rstart, PROffset64 
   return IO_OKAY;
 }
 
-static int _range_service(Session *sn, Request *rq, const char *path, PRFileInfo64 *finfo, const char *range)
+static int _range_service(Session *sn, Request *rq, const char *path, PRFileInfo64 *finfo, const char *range, int max_ranges)
 {
     char sep[128];
     char numstr[UTIL_I64TOA_SIZE];
@@ -302,7 +389,7 @@ static int _range_service(Session *sn, Request *rq, const char *path, PRFileInfo
 
     char *byterange = pool_strdup(sn->pool, range + 6);
 
-    num_ranges = _ranges_parse(&head, byterange, finfo, &parse_status);
+    num_ranges = _ranges_parse(&head, byterange, finfo, max_ranges, &parse_status);
     if (num_ranges <= 0) {
         _ranges_free(head);
         if (parse_status == PROTOCOL_NOT_IMPLEMENTED) {
@@ -393,11 +480,11 @@ static int _range_service(Session *sn, Request *rq, const char *path, PRFileInfo
             }
             curr_head = curr_head->next;
         }
-    }
-    if(num_ranges > 1) {
-        util_sprintf(&sep[seplen-2], "--%c%c", CR, LF);
-        seplen += 2;
-        net_write(sn->csd, sep, seplen);
+        if(num_ranges > 1) {
+            util_sprintf(&sep[seplen-2], "--%c%c", CR, LF);
+            seplen += 2;
+            net_write(sn->csd, sep, seplen);
+        }
     }
     system_fclose(fd);
     param_free(doc_type);
@@ -430,7 +517,7 @@ int service_plain_range(pblock *param, Session *sn, Request *rq)
         return REQ_ABORTED;
     }
 
-    return _range_service(sn, rq, path, &finfo, range);
+    return _range_service(sn, rq, path, &finfo, range, _get_max_ranges(param));
 }
 
 
@@ -526,7 +613,7 @@ int service_plain_file(pblock *param, Session *sn, Request *rq)
 
     const char *range = pblock_findkeyval(pb_key_range, rq->headers);
     if (range) {
-        ret = _range_service(sn, rq, path, &finfo->pr, range);
+        ret = _range_service(sn, rq, path, &finfo->pr, range, _get_max_ranges(param));
         if (ret != REQ_NOACTION) {
             if (NSFCENTRY_ISVALID(&entry))
                 NSFC_ReleaseEntry(nsfcCache, &entry);

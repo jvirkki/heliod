@@ -224,6 +224,16 @@ test-max-requests:
 	$(BUILD_ROOT)/test/max_requests_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- max-requests-per-connection test passed -----"
 
+# Byte-range and Range header DoS protection test: verifies single and
+# multipart byte ranges, 416 unsatisfiable ranges, HEAD multi-range framing,
+# the range count cap (default 20, configurable via max-ranges), and rejection
+# of overlapping/descending/amplification Range headers with 200 OK fallback.
+test-range:
+	@echo "----- Running byte-range and Range DoS test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/range_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- byte-range and Range DoS test passed -----"
+
 # Event I/O smoke test (uses the https-test instance from make install).
 test-event:
 	@echo "----- Running event I/O smoke test -----"
