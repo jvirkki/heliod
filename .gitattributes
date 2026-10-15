@@ -1,4 +1,0 @@
-# Exclude local agent notes from git archive exports.
-# AGENTS.md is tracked locally but must not be bundled into source tarballs
-# or exported to external repositories / PRs.
-AGENTS.md export-ignore

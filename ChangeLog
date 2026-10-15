@@ -105,10 +105,9 @@
             ldap_ssl.h); Java source level raised to 8; Complex.cpp
             built at -O1 to avoid exhausting memory on low-RAM hosts.
 
-            Modern toolchain compatibility (see TODO.md for the full
-            tracker): -D_FORTIFY_SOURCE=0 and -D__NO_INLINE__ to work
-            around legacy K&R variadic code and duplicate glibc stdio
-            inline symbols; -fcommon and -fpermissive on Debian/Ubuntu;
+            Modern toolchain compatibility: -D_FORTIFY_SOURCE=0 and
+            -D__NO_INLINE__ to work around legacy K&R variadic code and
+            duplicate glibc stdio inline symbols; -fcommon and -fpermissive on Debian/Ubuntu;
             removed obsolete "auto" storage specifiers, const-
             correctness and type-mismatch fixes; header availability
             fixes (sys/ioctl.h, sys/stropts.h, errno.h, getopt.h for
