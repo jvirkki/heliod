@@ -348,6 +348,25 @@ and HTTP/2:
   partial, full, and disabled `<qos-limits>` while concurrent classic HTTP/1.1,
   event HTTP/1.1, and HTTP/2 clients drive continuous traffic complete with zero
   worker crashes or PID changes.  Reuses `https-test`.
+- `proxy_smoke.sh <work-root>` — Reverse proxy configuration, routing, sticky
+  sessions, and dynamic reconfiguration under load (`libproxy/route.cpp`,
+  `libproxy/reverse.cpp`, `libproxy/stuff.cpp`, `libproxy/httpclient.cpp`).
+  Starts two local HTTP/1.1 origin servers and configures `NameTrans fn="map"`,
+  `NameTrans fn="reverse-map"`, `Route fn="set-origin-server"`, and
+  `Service fn="proxy-retrieve"` across `io-model=classic` (18180) and
+  `io-model=event` (18181) listeners.  Verifies: (1) single-origin forwarding
+  over classic HTTP/1.1, event HTTP/1.1, and HTTP/2 (`h2c`), trailing-slash
+  `map` preservation across requests, and `Location` / `Content-Location` /
+  `Set-Cookie` domain rewriting via `reverse-map`; (2) dynamic reconfiguration
+  to multi-origin `set-origin-server` distributes non-sticky requests across
+  both origins; (3) sticky session routing via default `JSESSIONID` + `JROUTE`
+  cookie, `;jsessionid=...:<jroute>` URI parameter, and custom `sticky-cookie` /
+  `sticky-param` / `route-cookie` / `route-hdr` parameters; (4) clean rollback
+  (`CORE3278`/`CORE3279`) when `set-origin-server` is reconfigured with an
+  invalid URL path or missing `server` parameter, followed by a valid
+  reconfiguration and full server restart; (5) 12 consecutive dynamic
+  reconfigurations under concurrent classic and event proxy load with zero
+  worker crashes or PID changes.  Reuses `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 
@@ -483,6 +502,8 @@ make -C test test-h2-idle       # run h2_idle_timeout_smoke.sh
 make -C test test-fastcgi-h2    # run fastcgi_h2_smoke.sh (needs php-fpm; else SKIPs)
 make -C test test-max-requests  # run max_requests_smoke.sh
 make -C test test-range         # run range_smoke.sh (byte-range + Range DoS cap)
+make -C test test-qos           # run qos_smoke.sh (QoS + dynamic reconfig)
+make -C test test-proxy         # run proxy_smoke.sh (reverse proxy + dynamic reconfig)
 ```
 
 ### Rebuilding after a header change

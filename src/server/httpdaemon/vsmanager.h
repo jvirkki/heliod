@@ -45,6 +45,7 @@ class GenericVector;
 
 class VSListener {
 public:
+    virtual ~VSListener() { }
     virtual PRStatus initVS(VirtualServer* incoming, const VirtualServer* current) { return PR_SUCCESS; }
     virtual void destroyVS(VirtualServer* outgoing) { }
 };

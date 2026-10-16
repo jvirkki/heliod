@@ -1,7 +1,7 @@
 /**
  * PROPRIETARY/CONFIDENTIAL. Use of this product is subject to
- * license terms. Copyright © 2001 Sun Microsystems, Inc.
- * Some preexisting portions Copyright © 2001 Netscape Communications Corp.
+ * license terms. Copyright ï¿½ 2001 Sun Microsystems, Inc.
+ * Some preexisting portions Copyright ï¿½ 2001 Netscape Communications Corp.
  * All rights reserved.
  */
 /*
@@ -452,7 +452,7 @@ int ntrans_map(pblock *pb, Session *sn, Request *rq)
     u = pp->value;
 
     if (fl > 0 && from[fl-1] == '/') {
-	from[--fl] = '\0';
+	--fl;
     }
 
     /* The second or clause is to prevent partials from shadowing.
@@ -480,7 +480,7 @@ int ntrans_map(pblock *pb, Session *sn, Request *rq)
      * trailing slash.
      *
      */
-    if (fl > 0 && !strcmp(from, u) && !is_connect_remap) {
+    if (fl > 0 && (int)strlen(u) == fl && !strncmp(from, u, fl) && !is_connect_remap) {
 	char *orig_url = pblock_findval("uri", rq->reqpb);
 	char *new_url;
 	int len;

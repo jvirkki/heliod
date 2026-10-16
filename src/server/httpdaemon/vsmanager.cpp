@@ -72,8 +72,9 @@ public:
         VSManager::setConfiguration(incoming);
 
         // For every VirtualServer* in the new configuration...
+        int iVS = 0;
         if (incoming) {
-            for (int iVS = 0; (iVS < incoming->getVSCount()) && (rv == PR_SUCCESS); iVS++) {
+            for (iVS = 0; iVS < incoming->getVSCount(); iVS++) {
                 VirtualServer* vsIncoming = incoming->getVS(iVS);
                 if (!vsIncoming->enabled)
                     continue;
@@ -86,10 +87,26 @@ public:
                 VSManager::inInitVS = PR_TRUE;
                 rv = listener->initVS(vsIncoming, vsCurrent);
                 VSManager::inInitVS = PR_FALSE;
+                if (rv != PR_SUCCESS)
+                    break;
             }
         }
 
-        return (rv == PR_SUCCESS) ? PR_SUCCESS : PR_FAILURE;
+        if (rv != PR_SUCCESS) {
+            while (iVS--) {
+                VirtualServer* vsIncoming = incoming->getVS(iVS);
+                if (!vsIncoming->enabled)
+                    continue;
+
+                VSManager::inDestroyVS = PR_TRUE;
+                listener->destroyVS(vsIncoming);
+                VSManager::inDestroyVS = PR_FALSE;
+            }
+            VSManager::configuration = (Configuration*)current;
+            return PR_FAILURE;
+        }
+
+        return PR_SUCCESS;
     }
 
     void releaseConfiguration(Configuration* outgoing)

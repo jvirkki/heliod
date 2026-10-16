@@ -305,7 +305,7 @@ PRStatus reverse_map_add(Session *sn,
         }
     }
 
-    return PR_SUCCESS;
+    return rv;
 }
 
 
@@ -512,6 +512,7 @@ static PRBool rewrite_set_cookie(Session *sn, Request *rq, pb_param *pp)
 
                 rewritten = PR_TRUE;
             }
+            pool_free(sn->pool, new_domain);
         }
     }
 

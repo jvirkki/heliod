@@ -50,6 +50,7 @@ template<class T> class PSQueue;
 
 class ConfigurationListener {
 public:
+    virtual ~ConfigurationListener() { }
     virtual PRStatus setConfiguration(Configuration* incoming, const Configuration* current) { return PR_SUCCESS; }
     virtual void releaseConfiguration(Configuration* outgoing) { }
 };

@@ -245,6 +245,17 @@ test-qos:
 	$(BUILD_ROOT)/test/qos_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- QoS and dynamic reconfiguration test passed -----"
 
+# Reverse proxy configuration, routing, sticky session, and dynamic
+# reconfiguration under load test: verifies single-origin and multi-origin
+# set-origin-server routing, Location/Set-Cookie reverse-map rewriting,
+# JROUTE/URI sticky sessions, clean rollback on invalid route configuration,
+# and repeated dynamic reconfigurations under concurrent proxy traffic.
+test-proxy:
+	@echo "----- Running reverse-proxy smoke test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/proxy_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- reverse-proxy smoke test passed -----"
+
 # Event I/O smoke test (uses the https-test instance from make install).
 test-event:
 	@echo "----- Running event I/O smoke test -----"

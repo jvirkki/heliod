@@ -1185,7 +1185,8 @@ NSAPI_PUBLIC void pblock_kvreplace(const pb_key *key, const char *value, int val
     if (pp) {
         pool_free(pl->pl_mempool, pp->value);
         pp->value = (char*)pool_malloc(pl->pl_mempool, valuelen + 1);
-        memcpy(pp->value, value, valuelen + 1);
+        memcpy(pp->value, value, valuelen);
+        pp->value[valuelen] = '\0';
     } else {
         pblock_kvinsert(key, value, valuelen, pb);
     }

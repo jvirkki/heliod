@@ -507,7 +507,8 @@ static inline PRBool maybe_interpolative(pblock *pb)
 {
     for (int hi = 0; hi < pb->hsize; hi++) {
         for (pb_entry *p = pb->ht[hi]; p != NULL; p = p->next) {
-            if (strchr(p->param->value, '$'))
+            if (param_key(p->param) != pb_key_magnus_internal &&
+                strchr(p->param->value, '$'))
                 return PR_TRUE;
         }
     }

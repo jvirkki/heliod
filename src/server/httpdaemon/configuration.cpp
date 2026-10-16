@@ -439,6 +439,8 @@ void Configuration::addVs(ServerXMLSchema::String& lsid, VirtualServer* vs)
 
 void Configuration::setListener(ConfigurationListener* incoming)
 {
+    if (listener && listener != incoming)
+        delete listener;
     listener = incoming;
 }
 

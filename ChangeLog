@@ -1,5 +1,75 @@
 2026-10-15  Joe McCabe <joe@jmccabe.org>
 
+        * Bug fix: fix dynamic-reconfiguration rollback state corruption and
+          listener lifecycle across ConfigurationManager and VSManager.
+
+            Fixes several defects in general configuration reload and
+            rollback handling across src/server/httpdaemon/ and
+            src/server/base/:
+            (1) VSConfigurationListener::setConfiguration() in
+            src/server/httpdaemon/vsmanager.cpp previously overwrote
+            VSManager::configuration = incoming before running
+            listener->initVS().  Whenever any VSListener or directive
+            listener rejected an incoming configuration during dynamic
+            reconfiguration, ConfigurationManager::setConfiguration() rolled
+            back and WebServer::Reconfigure() released and deleted incoming,
+            leaving VSManager::configuration as a dangling pointer to freed
+            memory.  VSConfigurationListener::setConfiguration() and
+            NSAPIDirectiveVSListener::initVS() (src/server/base/vs.cpp) now
+            cleanly unwind any partially initialized directives and virtual
+            servers and restore VSManager::configuration to current on
+            failure;
+            (2) ConfigurationManager::setConfiguration() in
+            src/server/httpdaemon/configurationmanager.cpp previously
+            incremented its listener loop index after a listener returned
+            PR_FAILURE, causing countListenersCalled to include the failing
+            listener and invoking releaseConfiguration() on a listener whose
+            setConfiguration() had failed; it now breaks before incrementing;
+            (3) Configuration::setListener() in
+            src/server/httpdaemon/configuration.cpp now deletes any
+            previously attached ConfigurationListener when
+            ConfigurationManager::setConfiguration() is invoked a second
+            time on the initial Configuration during server startup, and
+            ConfigurationListener (configurationmanager.h) and VSListener
+            (vsmanager.h) now declare virtual destructors so deleting derived
+            listeners through base pointers does not cause a size-mismatched
+            deallocation;
+            (4) maybe_interpolative() in src/server/frame/object.cpp now
+            skips pb_key_magnus_internal entries (matching model_pb_create()
+            and pblock_copy()) so raw binary pointers cached in directive
+            pblocks by VSDirectiveInitFunc callbacks are not scanned as C
+            strings with strchr(..., '$'), and pblock_kvreplace() in
+            src/server/base/pblock.cpp copies valuelen bytes and
+            NUL-terminates rather than reading valuelen + 1 bytes from value.
+
+        * Bug fix: fix reverse-proxy route configuration lifetime,
+          directive pblock mutation, and sticky URI parameter extraction
+          (Oracle 25154145).
+
+            Fixes several memory-lifetime and routing defects in
+            src/server/libproxy/:
+            (1) route_init_set_http_server() and
+            route_destroy_set_http_server() in src/server/libproxy/route.cpp
+            now remove and destroy any existing preparsed RouteConfig on
+            dir->param.pb before inserting a new one (preventing duplicate
+            pb_key_magnus_internal entries and leaked RouteConfig objects
+            when ConfigurationManager::setConfiguration() is invoked twice
+            on the initial Configuration during startup), pair all
+            RouteConfig allocations and frees against route->pool, and
+            free individual sticky_cookies[i] and sticky_params[i] strings
+            in destroy_route_config() as well as temporary URL/domain
+            buffers in set_http_server() and reverse.cpp;
+            (2) ntrans_map() in src/server/libproxy/stuff.cpp no longer
+            mutates the shared directive pblock's "from" parameter in place
+            when stripping a trailing slash;
+            (3) extract_uri_jroute() and get_request_jroute() in
+            src/server/libproxy/route.cpp now recognize both literal ':'
+            and percent-encoded '%3a'/'%3A' (produced by ntrans_map's
+            util_uri_escape() on rq->vars["escaped"]) and fall back to
+            rq->vars["path"], and route_service_gateway_dump() formats the
+            16-byte Jroute character array with %.*s instead of passing the
+            Jroute union by value to PR_fprintf("%s").
+
         * Bug fix: prevent NULL-pointer dereference in
           HttpRequest::processQOS() when <qos-limits> omits <max-bps> or
           <max-connections>, and widen QoS bandwidth tracking and limits

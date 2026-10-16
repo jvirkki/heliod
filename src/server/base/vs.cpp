@@ -150,6 +150,8 @@ public:
         if (rv == PR_SUCCESS) {
             if (objset_interpolative(objset) != PR_SUCCESS)
                 ereport(LOG_VERBOSE, "Unable to interpolate objset for virtual server %s (%s)", vs_get_id(incoming), system_errmsg());
+        } else {
+            destroyVS(incoming);
         }
 
         return rv;

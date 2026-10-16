@@ -428,6 +428,7 @@ static Gateway * get_gateway(const char *host, int port, PRBool secure)
      * Assign a unique ID based on the URL
      */
 
+    memset(md5, 0, sizeof(md5));
     PK11_HashBuf(SEC_OID_MD5, md5, (unsigned char *)url, strlen(url));
     url64_encode(md5, MD5_BYTES_FOR_JROUTE, jroute.chars, JROUTE_LEN);
 
@@ -485,14 +486,25 @@ get_gateway_short_circuit:
 
 static int add_server_gateway(pblock *pb, pb_param *pp, void *data)
 {
+    RouteConfig *route = (RouteConfig *)data;
+    if (!route->gateways)
+        return -1;
+
     Gateway *gateway = NULL;
 
-    char *server = STRDUP(pp->value);
+    char *server = pool_strdup(route->pool, pp->value);
     if (!server)
         return -1;
 
+    char *trimmed = server;
+    while (isspace((unsigned char)*trimmed))
+        trimmed++;
+    int trimmed_len = strlen(trimmed);
+    while (trimmed_len > 0 && isspace((unsigned char)trimmed[trimmed_len - 1]))
+        trimmed[--trimmed_len] = '\0';
+
     ParsedUrl url;
-    if (url_parse(server, &url) == PR_SUCCESS &&
+    if (url_parse(trimmed, &url) == PR_SUCCESS &&
         (url.scheme == SCHEME_NONE ||
          url.scheme == SCHEME_HTTP ||
          url.scheme == SCHEME_HTTPS) &&
@@ -506,17 +518,13 @@ static int add_server_gateway(pblock *pb, pb_param *pp, void *data)
         gateway = get_gateway(url.host, url.port, secure);
     }
 
-    FREE(server);
+    pool_free(route->pool, server);
 
     if (!gateway) {
         log_error(LOG_FAILURE, pblock_findkeyval(pb_key_fn, pb), NULL, NULL,
                   XP_GetAdminStr(DBT_invalid_url_X), pp->value);
         return -1;
     }
-
-    RouteConfig *route = (RouteConfig *)data;
-    if (!route->gateways)
-        return -1;
 
     route->gateways[route->num_gateways] = gateway;
     route->num_gateways++;
@@ -530,12 +538,12 @@ static int add_server_gateway(pblock *pb, pb_param *pp, void *data)
 static int add_sticky_cookie(pblock *pb, pb_param *pp, void *data)
 {
     if (*pp->value) {
-        char *sticky_cookie = STRDUP(pp->value);
-        if (!sticky_cookie)
-            return -1;
-
         RouteConfig *route = (RouteConfig *)data;
         if (!route->sticky_cookies)
+            return -1;
+
+        char *sticky_cookie = pool_strdup(route->pool, pp->value);
+        if (!sticky_cookie)
             return -1;
 
         route->sticky_cookies[route->num_sticky_cookies] = sticky_cookie;
@@ -551,12 +559,12 @@ static int add_sticky_cookie(pblock *pb, pb_param *pp, void *data)
 static int add_sticky_param(pblock *pb, pb_param *pp, void *data)
 {
     if (*pp->value) {
-        char *sticky_param = STRDUP(pp->value);
-        if (!sticky_param)
-            return -1;
-
         RouteConfig *route = (RouteConfig *)data;
         if (!route->sticky_params)
+            return -1;
+
+        char *sticky_param = pool_strdup(route->pool, pp->value);
+        if (!sticky_param)
             return -1;
 
         route->sticky_params[route->num_sticky_params] = sticky_param;
@@ -571,12 +579,22 @@ static int add_sticky_param(pblock *pb, pb_param *pp, void *data)
 
 static void destroy_route_config(RouteConfig *route)
 {
-    FREE(route->gateways);
-    FREE(route->sticky_cookies);
-    FREE(route->sticky_params);
-    FREE(route->route_hdr);
-    FREE(route->route_cookie);
-    FREE(route);
+    pool_handle_t *pool = route->pool;
+
+    pool_free(pool, route->gateways);
+    if (route->sticky_cookies) {
+        for (int i = 0; i < route->num_sticky_cookies; i++)
+            pool_free(pool, route->sticky_cookies[i]);
+        pool_free(pool, route->sticky_cookies);
+    }
+    if (route->sticky_params) {
+        for (int i = 0; i < route->num_sticky_params; i++)
+            pool_free(pool, route->sticky_params[i]);
+        pool_free(pool, route->sticky_params);
+    }
+    pool_free(pool, route->route_hdr);
+    pool_free(pool, route->route_cookie);
+    pool_free(pool, route);
 }
 
 
@@ -591,13 +609,14 @@ static RouteConfig * create_route_config(pblock *pb)
     // Allocate the RouteConfig.  Note that we allocate from the permanent heap
     // when we're called from route_init_set_http_server() and from the session
     // pool when we're called from set_http_server().
-    RouteConfig *route = (RouteConfig *)CALLOC(sizeof(RouteConfig));
+    pool_handle_t *pool = system_pool();
+    RouteConfig *route = (RouteConfig *)pool_calloc(pool, 1, sizeof(RouteConfig));
     if (!route)
         return NULL;
 
     // pool should be non-NULL when the RouteConfig was allocated specifically
     // for this request
-    route->pool = system_pool();
+    route->pool = pool;
 
     // Count the number of "server" parameters
     int num_servers = foreach(pb, pb_key_server);
@@ -616,7 +635,7 @@ static RouteConfig * create_route_config(pblock *pb)
         return NULL;
     }
 
-    route->gateways = (Gateway **)MALLOC(num_servers * sizeof(Gateway *));
+    route->gateways = (Gateway **)pool_malloc(pool, num_servers * sizeof(Gateway *));
     route->num_gateways = 0;
 
     // Lookup the Gateway * for each "server" parameter
@@ -627,8 +646,11 @@ static RouteConfig * create_route_config(pblock *pb)
 
     // Lookup the Gateway * for "hostname" and "port"
     if (hostname && port) {
-        Gateway *gateway = get_gateway(hostname, atoi(port), PR_FALSE);
-        if (!gateway) {
+        int port_num = atoi(port);
+        Gateway *gateway = NULL;
+        if (*hostname && port_num >= 1 && port_num <= 65535)
+            gateway = get_gateway(hostname, port_num, PR_FALSE);
+        if (!gateway || !route->gateways) {
             destroy_route_config(route);
             return NULL;
         }
@@ -642,15 +664,15 @@ static RouteConfig * create_route_config(pblock *pb)
     int num_sticky_cookies = foreach(pb, pb_key_sticky_cookie);
     if (num_sticky_cookies > 0) {
         route->sticky_cookies = (char **)
-            MALLOC(num_sticky_cookies * sizeof(char *));
+            pool_malloc(pool, num_sticky_cookies * sizeof(char *));
         foreach(pb, pb_key_sticky_cookie, add_sticky_cookie, route);
     } else {
-        route->sticky_cookies = (char **)MALLOC(2 * sizeof(char *));
+        route->sticky_cookies = (char **)pool_malloc(pool, 2 * sizeof(char *));
         if (route->sticky_cookies) {
             char *cookie;
-            if (cookie = STRDUP("JSESSIONID"))
+            if (cookie = pool_strdup(pool, "JSESSIONID"))
                 route->sticky_cookies[route->num_sticky_cookies++] = cookie;
-            if (cookie = STRDUP("JSESSIONIDSSO"))
+            if (cookie = pool_strdup(pool, "JSESSIONIDSSO"))
                 route->sticky_cookies[route->num_sticky_cookies++] = cookie;
         }
     }
@@ -659,26 +681,26 @@ static RouteConfig * create_route_config(pblock *pb)
     int num_sticky_params = foreach(pb, pb_key_sticky_param);
     if (num_sticky_params > 0) {
         route->sticky_params = (char **)
-            MALLOC(num_sticky_params * sizeof(char *));
+            pool_malloc(pool, num_sticky_params * sizeof(char *));
         foreach(pb, pb_key_sticky_param, add_sticky_param, route);
     } else {
-        route->sticky_params = (char **)MALLOC(1 * sizeof(char *));
+        route->sticky_params = (char **)pool_malloc(pool, 1 * sizeof(char *));
         if (route->sticky_params) {
             char *param;
-            if (param = STRDUP("jsessionid"))
+            if (param = pool_strdup(pool, "jsessionid"))
                 route->sticky_params[route->num_sticky_params++] = param;
         }
     }
 
     // Process the "route-hdr" parameter
     if (char *route_hdr = pblock_findkeyval(pb_key_route_hdr, pb))
-        route->route_hdr = STRDUP(route_hdr);
+        route->route_hdr = pool_strdup(pool, route_hdr);
 
     // Process the "route-cookie" parameter
     if (char *route_cookie = pblock_findkeyval(pb_key_route_cookie, pb)) {
-        route->route_cookie = STRDUP(route_cookie);
+        route->route_cookie = pool_strdup(pool, route_cookie);
     }  else {
-        route->route_cookie = STRDUP("JROUTE");
+        route->route_cookie = pool_strdup(pool, "JROUTE");
     }
     if (route->route_cookie)
         route->route_cookie_len = strlen(route->route_cookie);
@@ -706,6 +728,16 @@ extern "C" int route_init_set_http_server(const directive *dir,
                                           VirtualServer *incoming,
                                           const VirtualServer *current)
 {
+    // If this directive already has a preparsed RouteConfig (e.g. when
+    // setConfiguration is invoked a second time on the initial Configuration
+    // during startup), destroy the previous copy before replacing it.
+    if (pb_param *old_pp = pblock_removekey(pb_key_magnus_internal, dir->param.pb)) {
+        RouteConfig *old = *(RouteConfig **)old_pp->value;
+        if (old)
+            destroy_route_config(old);
+        param_free(old_pp);
+    }
+
     // Preparse the route configuration
     RouteConfig *route = create_route_config(dir->param.pb);
     if (!route)
@@ -742,9 +774,12 @@ extern "C" void route_destroy_set_http_server(const directive *dir,
                                               VirtualServer *outgoing)
 {
     // Destroy the preparsed configuration we allocated earlier
-    RouteConfig *route = get_route_config(dir->param.pb);
-    if (route)
-        destroy_route_config(route);
+    if (pb_param *pp = pblock_removekey(pb_key_magnus_internal, dir->param.pb)) {
+        RouteConfig *route = *(RouteConfig **)pp->value;
+        if (route)
+            destroy_route_config(route);
+        param_free(pp);
+    }
 }
 
 
@@ -1558,10 +1593,18 @@ static PRBool extract_uri_jroute(RouteConfig *route,
             // The jroute follows the colon in a sticky parameter
             while (*uri && *uri != '=' && *uri != ';' && *uri != '/')
                 uri++;
-            while (*uri && *uri != ':' && *uri != ';' && *uri != '/')
+            while (*uri && *uri != ':' && *uri != ';' && *uri != '/') {
+                if (uri[0] == '%' && uri[1] == '3' &&
+                    (uri[2] == 'a' || uri[2] == 'A'))
+                    break;
                 uri++;
-            if (*uri == ':')
+            }
+            if (*uri == ':') {
                 request_jroute = uri + 1;
+            } else if (uri[0] == '%' && uri[1] == '3' &&
+                       (uri[2] == 'a' || uri[2] == 'A')) {
+                request_jroute = uri + 3;
+            }
         }
     }
 
@@ -1698,10 +1741,13 @@ static inline PRBool get_request_jroute(Session *sn,
     // Look for a sticky parameter in the URI
     if (route->num_sticky_params) {
         const char *uri = pblock_findkeyval(pb_key_escaped, rq->vars);
-        if (!uri)
-            uri = pblock_findkeyval(pb_key_path, rq->vars);
-        if (extract_uri_jroute(route, uri, upstream_jroute, extracted_jroute))
+        if (uri && extract_uri_jroute(route, uri, upstream_jroute, extracted_jroute)) {
             extracted = PR_TRUE;
+        } else {
+            uri = pblock_findkeyval(pb_key_path, rq->vars);
+            if (uri && extract_uri_jroute(route, uri, upstream_jroute, extracted_jroute))
+                extracted = PR_TRUE;
+        }
     }
 
     // Look for a route cookie in the headers
@@ -1912,7 +1958,7 @@ static int set_http_server(pblock *pb,
         reverse_map_add(sn, rq, gateway->url, our_url);
 
         // If we're going to tell the gateway the original Host: header...
-        if (!route->rewrite_host) {
+        if (!route->rewrite_host && our_url) {
             // If we'll use a different protocol to talk to the gateway than
             // the client is using to talk to us...
             Fragment gateway_scheme = parse_scheme(gateway->url);
@@ -1924,11 +1970,15 @@ static int set_http_server(pblock *pb,
                 const char *host = pblock_findkeyval(pb_key_host, rq->headers);
                 if (host) {
                     char *wrong_scheme_url = build_url(&gateway_scheme, host);
-                    if (wrong_scheme_url)
+                    if (wrong_scheme_url) {
                         reverse_map_add(sn, rq, wrong_scheme_url, our_url);
+                        FREE(wrong_scheme_url);
+                    }
                 }
             }
         }
+        if (our_url)
+            FREE(our_url);
 
         // Process the generic "rewrite-" parameters
         reverse_map_set_headers(pb, sn, rq);
@@ -2122,11 +2172,11 @@ int route_service_gateway_dump(pblock *pb, Session *sn, Request *rq)
             PR_fprintf(sn->csd,
                        "url = %s, "
                        "addr = %s, "
-                       "jroute = %s, "
+                       "jroute = %.*s, "
                        "offline = %s\n",
                        gateway->url,
                        gateway->addr,
-                       gateway->jroute,
+                       JROUTE_LEN, gateway->jroute.chars,
                        gateway->offline_vsid ? "true" : "false");
 
             gateway = gateway->next;

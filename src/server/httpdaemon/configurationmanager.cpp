@@ -156,7 +156,7 @@ PRStatus ConfigurationManager::setConfiguration(Configuration* incoming)
         // the configuration (call them in the same order they were added)
         lockVectorListeners->acquireRead();
         int i;
-        for (i = 0; i < vectorListeners->length() && rv == PR_SUCCESS; i++) {
+        for (i = 0; i < vectorListeners->length(); i++) {
             ConfigurationListener* listener;
             listener = (ConfigurationListener*)(*vectorListeners)[i];
             lockVectorListeners->release();
@@ -164,6 +164,8 @@ PRStatus ConfigurationManager::setConfiguration(Configuration* incoming)
                 // This ConfigurationListener rejected the configuration, so
                 // don't call any further listeners
                 rv = PR_FAILURE;
+                lockVectorListeners->acquireRead();
+                break;
             }
             lockVectorListeners->acquireRead();
         }
