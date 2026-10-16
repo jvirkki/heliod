@@ -59,6 +59,15 @@ void decode(const char* val, PRInt32& var, pblock* pb)
     var = atoi(pbval);
 };
 
+void decode(const char* val, PRInt64& var, pblock* pb)
+{
+    char* pbval = pblock_findval(val, pb);
+    if (!pbval)
+        return;
+
+    PR_sscanf(pbval, "%lld", &var);
+};
+
 //-----------------------------------------------------------------------------
 // qos_error
 //
@@ -77,11 +86,14 @@ int qos_error(pblock *pb, Session *sn, Request *rq)
     PR_ASSERT(sn);
     PR_ASSERT(pb);
 
-    PRInt32 vs_bw = 0, vs_bwlim = 0, vs_bw_ef = 0,
+    PRInt64 vs_bw = 0, vs_bwlim = 0,
+            vsc_bw = 0, vsc_bwlim = 0,
+            srv_bw = 0, srv_bwlim = 0;
+    PRInt32 vs_bw_ef = 0,
             vs_conn = 0, vs_connlim = 0, vs_conn_ef = 0,
-            vsc_bw = 0, vsc_bwlim = 0, vsc_bw_ef = 0,
+            vsc_bw_ef = 0,
             vsc_conn = 0, vsc_connlim = 0, vsc_conn_ef = 0,
-            srv_bw = 0, srv_bwlim = 0, srv_bw_ef = 0,
+            srv_bw_ef = 0,
             srv_conn = 0, srv_connlim = 0, srv_conn_ef = 0;
 
     pblock* apb = rq->vars;
@@ -121,10 +133,10 @@ int qos_error(pblock *pb, Session *sn, Request *rq)
         char abuf[1024];
         // bandwidth limit was exceeded, display it
         error.append("<P>Virtual server bandwidth limit of ");
-        sprintf(abuf, "%d", vs_bwlim);
+        PR_snprintf(abuf, sizeof(abuf), "%lld", vs_bwlim);
         error.append(abuf);
         error.append(" . Current VS bandwidth : ");
-        sprintf(abuf, "%d", vs_bw);
+        PR_snprintf(abuf, sizeof(abuf), "%lld", vs_bw);
         error.append(abuf);
         error.append(" .<P>");
     };
@@ -149,10 +161,10 @@ int qos_error(pblock *pb, Session *sn, Request *rq)
         char abuf[1024];
         // bandwidth limit was exceeded, display it
         error.append("<P>Virtual server class bandwidth limit of ");
-        sprintf(abuf, "%d", vsc_bwlim);
+        PR_snprintf(abuf, sizeof(abuf), "%lld", vsc_bwlim);
         error.append(abuf);
         error.append(" . Current VSCLASS bandwidth : ");
-        sprintf(abuf, "%d", vsc_bw);
+        PR_snprintf(abuf, sizeof(abuf), "%lld", vsc_bw);
         error.append(abuf);
         error.append(" .<P>");
     };
@@ -177,10 +189,10 @@ int qos_error(pblock *pb, Session *sn, Request *rq)
         char abuf[1024];
         // bandwidth limit was exceeded, display it
         error.append("<P>Global bandwidth limit of ");
-        sprintf(abuf, "%d", srv_bwlim);
+        PR_snprintf(abuf, sizeof(abuf), "%lld", srv_bwlim);
         error.append(abuf);
         error.append(" . Current global bandwidth : ");
-        sprintf(abuf, "%d", srv_bw);
+        PR_snprintf(abuf, sizeof(abuf), "%lld", srv_bw);
         error.append(abuf);
         error.append(" .<P>");
     };
@@ -240,11 +252,14 @@ int qos_handler(pblock *pb, Session *sn, Request *rq)
     PR_ASSERT(sn);
     PR_ASSERT(pb);
 
-    PRInt32 vs_bw = 0, vs_bwlim = 0, vs_bw_ef = 0,
+    PRInt64 vs_bw = 0, vs_bwlim = 0,
+            vsc_bw = 0, vsc_bwlim = 0,
+            srv_bw = 0, srv_bwlim = 0;
+    PRInt32 vs_bw_ef = 0,
             vs_conn = 0, vs_connlim = 0, vs_conn_ef = 0,
-            vsc_bw = 0, vsc_bwlim = 0, vsc_bw_ef = 0,
+            vsc_bw_ef = 0,
             vsc_conn = 0, vsc_connlim = 0, vsc_conn_ef = 0,
-            srv_bw = 0, srv_bwlim = 0, srv_bw_ef = 0,
+            srv_bw_ef = 0,
             srv_conn = 0, srv_connlim = 0, srv_conn_ef = 0;
 
     pblock* apb = rq->vars;

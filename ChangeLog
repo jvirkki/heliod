@@ -1,5 +1,39 @@
 2026-10-15  Joe McCabe <joe@jmccabe.org>
 
+        * Bug fix: prevent NULL-pointer dereference in
+          HttpRequest::processQOS() when <qos-limits> omits <max-bps> or
+          <max-connections>, and widen QoS bandwidth tracking and limits
+          to 64-bit (Oracle 12877126).
+
+            In schema/heliod-web-server_1_0.xsd, both <max-bps> and
+            <max-connections> inside <qos-limits> are optional
+            (minOccurs="0") without an implicit default, so the generated
+            ServerXMLSchema::QosLimits::getMaxBps() and
+            getMaxConnections() accessors return NULL when the
+            corresponding sub-element is omitted.
+            HttpRequest::processQOS() in
+            src/server/httpdaemon/httprequest.cpp previously tested only
+            qosLimits.enabled before dereferencing *getMaxBps() and
+            *getMaxConnections() on both the VirtualServer and the global
+            Configuration, causing webservd to crash with SIGSEGV on every
+            request whenever QoS was configured with only a connection
+            limit, only a bandwidth limit, or an empty <qos-limits> block.
+            processQOS() now checks that getMaxBps() and
+            getMaxConnections() are non-NULL before dereferencing, leaving
+            omitted limits at PR_INT64_MAX / PR_INT32_MAX (unenforced).
+            Also widens QoS bandwidth tracking and <max-bps> limits from
+            32-bit PRInt32 (~2.14 GB/s) to 64-bit PRInt64 across
+            schema/heliod-web-server_1_0.xsd, TrafficStats /
+            VSTrafficStats (src/server/httpdaemon/throttling.{h,cpp}),
+            HttpRequest::processQOS(), qos_handler / qos_error
+            (src/server/safs/qos.cpp, src/server/safs/dbtsafs.h), and
+            outputRequestBucket() (src/server/safs/perf.cpp), uses
+            relaxed atomic operations on TrafficStats / VSTrafficStats
+            counters to avoid data races with BandwidthManager, and checks
+            qosLimits.enabled in src/server/safs/perf.cpp so virtual
+            servers without their own <qos-limits> fall back to the
+            server-wide <qos-limits> in stats-xml output.
+
         * Security / bug fix: bound byte-range count and reject
           overlapping, descending, or amplifying Range headers in
           send-file / send-range (Oracle 12919334; CVE-2011-3192).

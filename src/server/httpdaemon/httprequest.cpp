@@ -685,6 +685,14 @@ HttpRequest::RestoreInputBuffer(netbuf *buf, unsigned char *inbuf, int maxsize)
 // Work detail for background threads
 //
 
+static inline pb_param *pblock_nllinsert(const char *name, PRInt64 value, pblock *pb)
+{
+    char num[UTIL_I64TOA_SIZE];
+
+    util_i64toa(value, num);
+    return pblock_nvinsert(name, num, pb);
+}
+
 void HttpRequest::processQOS()
 {
     PR_ASSERT(fQOS);
@@ -697,17 +705,17 @@ void HttpRequest::processQOS()
     // first get the VS stats
     TrafficStats& vs_stats = vs->getTrafficStats();
 
-    pblock_nninsert("vs_bandwidth", vs_stats.getBandwidth(), rqRq.rq.vars);
+    pblock_nllinsert("vs_bandwidth", vs_stats.getBandwidth(), rqRq.rq.vars);
     pblock_nninsert("vs_connections", vs_stats.getConnections(), rqRq.rq.vars);
 
-    PRInt32 vsMaxBps = PR_INT32_MAX;
-    if (vs->qosLimits.enabled)
+    PRInt64 vsMaxBps = PR_INT64_MAX;
+    if (vs->qosLimits.enabled && vs->qosLimits.getMaxBps())
         vsMaxBps = *vs->qosLimits.getMaxBps();
-    pblock_nninsert("vs_bandwidth_limit", vsMaxBps, rqRq.rq.vars);
-    pblock_nninsert("vs_bandwidth_enforced", (vsMaxBps != PR_INT32_MAX), rqRq.rq.vars);
+    pblock_nllinsert("vs_bandwidth_limit", vsMaxBps, rqRq.rq.vars);
+    pblock_nninsert("vs_bandwidth_enforced", (vsMaxBps != PR_INT64_MAX), rqRq.rq.vars);
 
     PRInt32 vsMaxConnections = PR_INT32_MAX;
-    if (vs->qosLimits.enabled)
+    if (vs->qosLimits.enabled && vs->qosLimits.getMaxConnections())
         vsMaxConnections = *vs->qosLimits.getMaxConnections();
     pblock_nninsert("vs_connections_limit", vsMaxConnections, rqRq.rq.vars);
     pblock_nninsert("vs_connections_enforced", (vsMaxConnections != PR_INT32_MAX), rqRq.rq.vars);
@@ -715,17 +723,17 @@ void HttpRequest::processQOS()
     // then get the global SERVER stats
     TrafficStats& srv_stats = configuration->getTrafficStats();
 
-    pblock_nninsert("server_bandwidth", srv_stats.getBandwidth(), rqRq.rq.vars);
+    pblock_nllinsert("server_bandwidth", srv_stats.getBandwidth(), rqRq.rq.vars);
     pblock_nninsert("server_connections", srv_stats.getConnections(), rqRq.rq.vars);
 
-    PRInt32 serverMaxBps = PR_INT32_MAX;
-    if (configuration->qosLimits.enabled)
+    PRInt64 serverMaxBps = PR_INT64_MAX;
+    if (configuration->qosLimits.enabled && configuration->qosLimits.getMaxBps())
         serverMaxBps = *configuration->qosLimits.getMaxBps();
-    pblock_nninsert("server_bandwidth_limit", serverMaxBps, rqRq.rq.vars);
-    pblock_nninsert("server_bandwidth_enforced", (serverMaxBps != PR_INT32_MAX), rqRq.rq.vars);
+    pblock_nllinsert("server_bandwidth_limit", serverMaxBps, rqRq.rq.vars);
+    pblock_nninsert("server_bandwidth_enforced", (serverMaxBps != PR_INT64_MAX), rqRq.rq.vars);
 
     PRInt32 serverMaxConnections = PR_INT32_MAX;
-    if (configuration->qosLimits.enabled)
+    if (configuration->qosLimits.enabled && configuration->qosLimits.getMaxConnections())
         serverMaxConnections = *configuration->qosLimits.getMaxConnections();
     pblock_nninsert("server_connections_limit", serverMaxConnections, rqRq.rq.vars);
     pblock_nninsert("server_connections_enforced", (serverMaxConnections != PR_INT32_MAX), rqRq.rq.vars);

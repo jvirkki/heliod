@@ -234,6 +234,17 @@ test-range:
 	$(BUILD_ROOT)/test/range_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- byte-range and Range DoS test passed -----"
 
+# Quality of Service (QoS) and dynamic reconfiguration under load test:
+# verifies partial <qos-limits> (<max-connections> only, <max-bps> only) at
+# both VS and server scope, 503 enforcement via qos-handler/qos-error,
+# stats-xml reporting, and repeated dynamic reconfigurations under concurrent
+# HTTP/1.1 (classic + event) and HTTP/2 load.
+test-qos:
+	@echo "----- Running QoS and dynamic reconfiguration test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/qos_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- QoS and dynamic reconfiguration test passed -----"
+
 # Event I/O smoke test (uses the https-test instance from make install).
 test-event:
 	@echo "----- Running event I/O smoke test -----"

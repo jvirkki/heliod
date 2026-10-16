@@ -49,11 +49,17 @@
 
 // configuration for QOS
 
+#if defined(__GNUC__) || defined(__clang__)
+#define QOS_ALIGNED8 __attribute__((aligned(8)))
+#else
+#define QOS_ALIGNED8
+#endif
+
 class TrafficSample
 {
     public:
-        TrafficSample(PRInt32 b = 0, PRIntervalTime t = 0);
-        PRInt32 bytes;
+        TrafficSample(PRInt64 b = 0, PRIntervalTime t = 0);
+        PRInt64 bytes;
         PRIntervalTime timestamp;
 };
 
@@ -64,8 +70,8 @@ class TrafficStats
     public:
         TrafficStats();
 
-        PRInt32 getBandwidth() const;       // returns previously computed bandwidth in bytes per second
-        void setBandwidth(PRInt32 bw);
+        PRInt64 getBandwidth() const;       // returns previously computed bandwidth in bytes per second
+        void setBandwidth(PRInt64 bw);
 
         PRInt32 getConnections() const;     // returns the current number of connections
         void setConnections(PRInt32 conn);  // atomically sets the value of the current connections total
@@ -74,8 +80,8 @@ class TrafficStats
 
     protected:
         // internal functions & data
-        PRInt32 connections;    // current connections
-        PRInt32 bandwidth;      // current bandwidth
+        PRInt64 bandwidth QOS_ALIGNED8; // current bandwidth
+        PRInt32 connections;            // current connections
         static PRIntervalTime recomputeinterval;
 };
 
@@ -91,17 +97,18 @@ class VSTrafficStats : public TrafficStats
 
         void record(TrafficSample& asample);    // to record traffic
 
-        PRInt32 computeBandwidth();             // calculates and returns bandwidth in bytes per second
-        inline PRInt32& getTemporary();         // returns a reference to bytes transferred
-        inline void recordBytes(PRInt32 bytes); // record the transmission of some bytes
+        PRInt64 computeBandwidth();             // calculates and returns bandwidth in bytes per second
+        inline PRInt64& getTemporary();         // returns a reference to bytes transferred
+        inline PRInt64 takeTemporary();         // atomically resets and returns bytes transferred
+        inline void recordBytes(PRInt64 bytes); // record the transmission of some bytes
         inline PRBool isEnabled();              // indicates whether QOS is enabled
     private:
         // internal functions & data
-        PRInt32  calculateBandwidth();
+        PRInt64  calculateBandwidth();
         void trashOldest();
 
-        PRInt32 temporary;      // holds bytes transferred
-                                // since the last snapshot
+        PRInt64 temporary QOS_ALIGNED8; // holds bytes transferred
+                                        // since the last snapshot
 
         TrafficSample* samples;    // circular array of traffic samples
         PRInt32 SampleNumber;       // number of samples in the array
@@ -130,14 +137,29 @@ inline void TrafficStats :: decrementConnections()
     PR_AtomicDecrement(&connections);
 };
 
-inline PRInt32& VSTrafficStats :: getTemporary()
+inline PRInt64& VSTrafficStats :: getTemporary()
 {
     return temporary;
 };
 
-inline void VSTrafficStats :: recordBytes(PRInt32 bytes)
+inline PRInt64 VSTrafficStats :: takeTemporary()
 {
-    PR_AtomicAdd(&temporary, bytes);
+#if defined(__GNUC__) || defined(__clang__)
+    return __atomic_exchange_n(&temporary, 0, __ATOMIC_RELAXED);
+#else
+    PRInt64 val = temporary;
+    temporary = 0;
+    return val;
+#endif
+};
+
+inline void VSTrafficStats :: recordBytes(PRInt64 bytes)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    __atomic_add_fetch(&temporary, bytes, __ATOMIC_RELAXED);
+#else
+    temporary += bytes;
+#endif
 };
 
 inline PRBool VSTrafficStats :: isEnabled()

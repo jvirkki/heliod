@@ -424,7 +424,7 @@ static void outputRequestBucket(XMLOutput &xml, PList_t qlist, const StatsReques
     if (!isEnabled(qlist, "request-bucket"))
         return;
 
-    PRInt32 maxByteTransmissionRate = 0;
+    PRInt64 maxByteTransmissionRate = 0;
     PRInt32 maxOpenConnections = 0;
     if (qos) {
         if (qos->getMaxBps())
@@ -697,10 +697,10 @@ static void outputVirtualServers(XMLOutput &xml, PList_t qlist, const Configurat
                 vs = configuration->getVS(vss->id);
     
                 // Find the most specific <qos-limits> for this VS
-                if (vs)
+                if (vs && vs->qosLimits.enabled)
                     qos = &vs->qosLimits;
                 if (!qos) {
-                    if (configuration)
+                    if (configuration && configuration->qosLimits.enabled)
                         qos = &configuration->qosLimits;
                 }
             }
@@ -847,7 +847,7 @@ static void outputThreads(XMLOutput &xml, PList_t qlist, const Configuration *co
                 xml.attribute("timeRequestStarted", thread->timeRequestStarted);
 
             outputRequestBucket(xml, qlist, &thread->requestBucket,
-                                configuration ? &configuration->qosLimits : 0);
+                                (configuration && configuration->qosLimits.enabled) ? &configuration->qosLimits : 0);
             outputProfileBuckets(xml, qlist, threadNode->profile);
 
             xml.endElement("thread");

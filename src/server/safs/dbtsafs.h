@@ -35,7 +35,7 @@
 /* CONFIDENTIAL AND PROPRIETARY SOURCE CODE                               */
 /* OF NETSCAPE COMMUNICATIONS CORPORATION                                 */
 /*                                                                        */
-/* Copyright © 1996,1997 Netscape Communications Corporation.  All Rights */
+/* Copyright ï¿½ 1996,1997 Netscape Communications Corporation.  All Rights */
 /* Reserved.  Use of this Source Code is subject to the terms of the      */
 /* applicable license agreement from Netscape Communications Corporation. */
 /*                                                                        */
@@ -258,11 +258,11 @@ BEGIN_STR(safs)
     ResDef(DBT_uploadError4, 328, "HTTP4328: get_chunk_header: Failed to obtain chunk header.")
     ResDef(DBT_uploadError5, 329, "HTTP4329: get_chunk_header: Exceeded header max line %d.")
     ResDef(DBT_ntransWarning1, 330, "HTTP4330: removed trailing / from %s/ for virtual server %s")
-    ResDef(DBT_QOS_VSBandwidthX, 331, "HTTP4331: Virtual server bandwidth limit of %d exceeded. Current VS bandwidth : %d")
+    ResDef(DBT_QOS_VSBandwidthX, 331, "HTTP4331: Virtual server bandwidth limit of %lld exceeded. Current VS bandwidth : %lld")
     ResDef(DBT_QOS_VSConnX, 332, "HTTP4332: Virtual server connection limit of %d exceeded. Current VS connections : %d")
-    ResDef(DBT_QOS_VSClassBandwidthX, 333, "HTTP4333: Virtual server class bandwidth limit of %d exceeded. Current VSCLASS bandwidth : %d")
+    ResDef(DBT_QOS_VSClassBandwidthX, 333, "HTTP4333: Virtual server class bandwidth limit of %lld exceeded. Current VSCLASS bandwidth : %lld")
     ResDef(DBT_QOS_VSClassConnX, 334, "HTTP4334: Virtual server class connection limit of %d exceeded. Current VSCLASS connections : %d")
-    ResDef(DBT_QOS_GlobalBandwidthX, 335, "HTTP4335: Global bandwidth limit of %d exceeded. Current global bandwidth : %d")
+    ResDef(DBT_QOS_GlobalBandwidthX, 335, "HTTP4335: Global bandwidth limit of %lld exceeded. Current global bandwidth : %lld")
     ResDef(DBT_QOS_GlobalConnX, 336, "HTTP4336: Global connection limit of %d exceeded. Current global connections : %d")
     ResDef(DBT_InvalidExpressionNameValue, 337, "HTTP4337: invalid expression: %s=\"%s\"")
     ResDef(DBT_NeedFilter, 338, "HTTP4338: missing parameter (need filter)")

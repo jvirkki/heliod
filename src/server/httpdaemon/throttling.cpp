@@ -58,19 +58,31 @@ TrafficStats :: TrafficStats ()
     connections = bandwidth = 0;
 };
 
-PRInt32 TrafficStats :: getBandwidth() const   // returns previously computed bandwidth in bytes per second
+PRInt64 TrafficStats :: getBandwidth() const   // returns previously computed bandwidth in bytes per second
 {
+#if defined(__GNUC__) || defined(__clang__)
+    return __atomic_load_n(&bandwidth, __ATOMIC_RELAXED);
+#else
     return bandwidth;
+#endif
 };
 
-void TrafficStats :: setBandwidth(PRInt32 bw)
+void TrafficStats :: setBandwidth(PRInt64 bw)
 {
-    PR_AtomicSet(&bandwidth, bw);
+#if defined(__GNUC__) || defined(__clang__)
+    __atomic_store_n(&bandwidth, bw, __ATOMIC_RELAXED);
+#else
+    bandwidth = bw;
+#endif
 };
 
 PRInt32 TrafficStats :: getConnections() const
 {
+#if defined(__GNUC__) || defined(__clang__)
+    return __atomic_load_n(&connections, __ATOMIC_RELAXED);
+#else
     return connections;
+#endif
 };
 
 void TrafficStats :: setConnections(PRInt32 conn)
@@ -80,7 +92,7 @@ void TrafficStats :: setConnections(PRInt32 conn)
 
 // TrafficSample
 
-TrafficSample :: TrafficSample(PRInt32 b, PRIntervalTime t)
+TrafficSample :: TrafficSample(PRInt64 b, PRIntervalTime t)
 {
     bytes = b;
     timestamp = t;
@@ -179,7 +191,7 @@ void VSTrafficStats :: record(TrafficSample& asample)
 void VSTrafficStats :: trashOldest()
 {
     // discount bytes from total
-    PRInt32 toremove = samples[oldest].bytes;
+    PRInt64 toremove = samples[oldest].bytes;
 
     totalbytes -= toremove;
 
@@ -196,13 +208,13 @@ void VSTrafficStats :: trashOldest()
     held--;
 };
 
-PRInt32 VSTrafficStats :: computeBandwidth()
+PRInt64 VSTrafficStats :: computeBandwidth()
 {
     setBandwidth(calculateBandwidth());
     return getBandwidth();
 };
 
-PRInt32 VSTrafficStats :: calculateBandwidth()
+PRInt64 VSTrafficStats :: calculateBandwidth()
 {
     // do we have any traffic recorded ?
     if (0 == totalbytes)
@@ -253,7 +265,21 @@ PRInt32 VSTrafficStats :: calculateBandwidth()
         return 0;
     };
 
-    return (PRInt32) ( (double) ((double) ((double)1000000.0*(double)totalbytes) / (double) microseconds)) ;
+#if defined(__SIZEOF_INT128__)
+    __int128 bw = ((__int128)totalbytes * 1000000) / (__int128)microseconds;
+    if (bw <= 0)
+        return 0;
+    if (bw > (__int128)PR_INT64_MAX)
+        return PR_INT64_MAX;
+    return (PRInt64)bw;
+#else
+    double bw = ((double)1000000.0 * (double)totalbytes) / (double)microseconds;
+    if (bw <= 0.0)
+        return 0;
+    if (bw >= 9223372036854774784.0)
+        return PR_INT64_MAX;
+    return (PRInt64)bw;
+#endif
 };
 
 BandwidthManager :: BandwidthManager() : Thread("Bandwidth thread")
@@ -300,7 +326,7 @@ void BandwidthManager :: run(void)
             for (int i = 0; i < config->getVSCount(); i++)
             {
                 VSTrafficStats& stats = config->getVS(i)->getTrafficStats();
-                PRInt32 transferred = PR_AtomicSet(&stats.getTemporary(), 0); // reset traffic to 0
+                PRInt64 transferred = stats.takeTemporary(); // reset traffic to 0
         
                 // make a traffic sample
                 TrafficSample sample(transferred, current);
@@ -308,17 +334,29 @@ void BandwidthManager :: run(void)
                 stats.record(sample);
         
                 // then calculate the bandwidth currently used
-                PRInt32 bw = stats.computeBandwidth();
+                PRInt64 bw = stats.computeBandwidth();
     
                 // add stats from this VS to the global stats
                 serverconn += stats.getConnections();
-                serverbw += bw;
+                if (bw > 0) {
+                    if (serverbw > PR_INT64_MAX - bw)
+                        serverbw = PR_INT64_MAX;
+                    else
+                        serverbw += bw;
+                }
             };
 
             // set the global stats
             TrafficStats& stats = config->getTrafficStats();
 
-            stats.setConnections(serverconn);
+            if (serverconn < 0)
+                serverconn = 0;
+            else if (serverconn > PR_INT32_MAX)
+                serverconn = PR_INT32_MAX;
+            if (serverbw < 0)
+                serverbw = 0;
+
+            stats.setConnections((PRInt32)serverconn);
             stats.setBandwidth(serverbw);
         };
 

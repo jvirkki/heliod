@@ -326,6 +326,28 @@ and HTTP/2:
   `200 OK` response in bounded time (< 1.0s); (5) a `<Client>` rule with
   `Service fn="send-file" max-ranges="3"` serves 3 ranges as `206` and 4 ranges
   as `200 OK`.  Reuses `https-test`.
+- `qos_smoke.sh <work-root>` — Quality of Service (`HttpRequest::processQOS`,
+  `throttling.cpp`, `safs/qos.cpp`, `safs/perf.cpp`) and dynamic reconfiguration
+  under load.  Configures `AuthTrans fn="qos-handler"` and
+  `Error code="503" fn="qos-error"` in `obj.conf` across `io-model=classic`
+  (18180) and `io-model=event` (18181) listeners and verifies: (1) virtual-server
+  `<qos-limits>` with only `<max-connections>` (omitting `<max-bps>`) serves
+  classic HTTP/1.1, event HTTP/1.1, and HTTP/2 (`h2c`) requests without crashing
+  in `processQOS()`, reports `maxOpenConnections="1"` and
+  `maxByteTransmissionRate="0"` in `/stats-xml/webservd.xml`, and returns `503`
+  with the `qos-error` body when concurrent connections exceed the limit;
+  (2) virtual-server `<qos-limits>` with only `<max-bps>` (omitting
+  `<max-connections>`) applied via dynamic reconfiguration (`bin/reconfig`)
+  serves traffic without crashing, enforces `503` once `BandwidthManager`
+  records traffic exceeding the limit, and accepts 64-bit `<max-bps>` values
+  above `PR_INT32_MAX` (`5000000000`) in both `server.xml` and
+  `/stats-xml/webservd.xml`; (3) server-wide `<server><qos-limits>`
+  partial configurations (`<max-connections>` only and `<max-bps>` only)
+  propagate to `stats-xml` when VS `<qos-limits>` is omitted and enforce global
+  bandwidth limits; (4) 10 consecutive dynamic reconfigurations cycling across
+  partial, full, and disabled `<qos-limits>` while concurrent classic HTTP/1.1,
+  event HTTP/1.1, and HTTP/2 clients drive continuous traffic complete with zero
+  worker crashes or PID changes.  Reuses `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 
