@@ -388,6 +388,28 @@ and HTTP/2:
   origin offline, while a genuinely stopped origin is marked offline, fails over
   to its healthy peer, and is automatically recovered within the configured
   `<offline-check-interval>` (`2` seconds).  Reuses `https-test`.
+- `pam_auth_smoke.sh [work-root]` — PAM authentication conversation,
+  password-aging response lifecycle, and Linux `auth-db` `<url>pam</url>`
+  integration (`libaccess/pamauth.c`, `libaccess/pamacl.cpp`).  Compiles
+  `pamauth.c` under AddressSanitizer and UndefinedBehaviorSanitizer against a
+  mock PAM framework modeled on Solaris `libpam` `free_resp()` and Linux-PAM
+  `_pam_drop_reply()`, and verifies: (1) standard authentication with preset
+  `PAM_AUTHTOK`; (2) password-aging warning during `pam_acct_mgmt()` emitting
+  `PAM_TEXT_INFO` and `PAM_ERROR_MSG` messages through `converse()` followed by
+  `free_resp()` without freeing read-only `.rodata` pointers; (3) expired
+  password (`PAM_NEW_AUTHTOK_REQD`) and expired account (`PAM_ACCT_EXPIRED`)
+  paths through `pam_acct_mgmt()`; (4) `PAM_PROMPT_ECHO_OFF` conversation
+  prompts returning a `strdup()`-allocated password alongside `NULL` responses
+  for `PAM_PROMPT_ECHO_ON` and `PAM_TEXT_INFO`; (5) `converse()` error and
+  mid-batch cleanup paths; (6) `pamauth_userexists()` and
+  `pamauth_get_groups_for_user()` for existing and nonexistent users; and
+  (7) when a built `<work-root>` is passed, verifies that `libns-httpd40.so`
+  exports the PAM `auth-db` symbols and links `libpam.so.0`, and runs a live
+  `https-test` instance configured with `<auth-db><url>pam</url></auth-db>` to
+  verify unauthenticated (`401`), wrong-password (`401`), expired-password
+  (`401` with `converse()` + `free_resp()`), password-aging warning + Linux
+  group membership (`200`), and `PAM_PROMPT_ECHO_OFF` (`200`) over HTTP.  Reuses
+  `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 

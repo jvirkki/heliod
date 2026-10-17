@@ -1,5 +1,38 @@
 2026-10-17  Joe McCabe <joe@jmccabe.org>
 
+        * Bug fix: fix PAM conversation response allocation and free symmetry on
+          password-aging and account-expiry paths (Oracle 6911225).
+
+            converse() in src/server/libaccess/pamauth.c previously assigned the
+            string literal "" to reply[i].resp for every PAM message style.  When
+            password aging or account expiration caused pam_acct_mgmt() (or
+            pam_authenticate()) to invoke the conversation callback with
+            PAM_TEXT_INFO or PAM_ERROR_MSG messages, the PAM framework's
+            free_resp() routine attempted to free() the read-only literal and
+            crashed webservd.  pamauth_authenticate() now passes the supplied
+            password through pam_conv.appdata_ptr, and converse() leaves
+            reply[i].resp as NULL for informational, error, and echo-on messages
+            while duplicating the password with strdup() only for
+            PAM_PROMPT_ECHO_OFF prompts (cleaning up any partial allocations on
+            error).  pamauth_get_groups_for_user() and pamauth_userexists() also
+            now guard against negative sysconf(_SC_GETPW_R_SIZE_MAX) returns,
+            check the return value of util_getpwnam(), and free the passwd
+            buffer on allocation failure.
+
+        * New feature: enable PAM authentication (auth-db url="pam") on Linux.
+
+            FEAT_PAM=1 was previously enabled only on Solaris in
+            make/defines_WebServer.mk because src/server/libaccess/pamauth.c
+            relied on Solaris-specific PAM message constants (PAM_MSG_NOCONF,
+            PAM_CONV_INTERRUPT), non-const struct pam_message ** conversation
+            signatures, and the Solaris-private _getgroupsbymember() libc
+            routine.  pamauth.c now uses Linux-PAM compatible conversation
+            signatures, #ifdef guards around Solaris-specific message styles,
+            and getgrouplist(3) for supplementary group enumeration on Linux,
+            and make/defines_WebServer.mk, make/defines_UNIX.mk, and
+            src/server/webservd/Makefile now build and link the PAM auth-db
+            against libpam.so.0 on Linux.
+
         * Bug fix: harden SSL/TLS session-cache-disabled mode and expired
           client-certificate handling against uninitialized-cache and stale
           peer-certificate hazards (Oracle 13725520, 16834733).

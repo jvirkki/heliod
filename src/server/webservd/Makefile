@@ -132,6 +132,9 @@ DLL_LIBS+=$(PCRE_LIB)
 DLL_LIBS+=serverxml
 DLL_LIBS+=ServerXMLSchema
 DLL_LIBS+=xsd2cpp
+ifdef FEAT_PAM
+DLL_LIBS+=$(PAM_LIBS)
+endif
 ifdef FEAT_SECRULE
 DLL_LIBS+=libap
 DLL_LIBS+=libsecrule

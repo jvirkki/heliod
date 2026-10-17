@@ -38,7 +38,43 @@
 #include <string.h>
 #include <syslog.h>
 #include <unistd.h>
+#if defined(__has_include) && !__has_include(<security/pam_appl.h>)
+typedef struct pam_handle pam_handle_t;
+struct pam_message {
+    int msg_style;
+    const char *msg;
+};
+struct pam_response {
+    char *resp;
+    int resp_retcode;
+};
+struct pam_conv {
+#if defined(LINUX) || defined(__linux__)
+    int (*conv)(int num_msg, const struct pam_message **msg,
+                struct pam_response **resp, void *appdata_ptr);
+#else
+    int (*conv)(int num_msg, struct pam_message **msg,
+                struct pam_response **resp, void *appdata_ptr);
+#endif
+    void *appdata_ptr;
+};
+#define PAM_SUCCESS             0
+#define PAM_CONV_ERR            6
+#define PAM_PROMPT_ECHO_OFF     1
+#define PAM_PROMPT_ECHO_ON      2
+#define PAM_ERROR_MSG           3
+#define PAM_TEXT_INFO           4
+#define PAM_AUTHTOK             6
+extern int pam_start(const char *service_name, const char *user,
+                     const struct pam_conv *pam_conversation,
+                     pam_handle_t **pamh);
+extern int pam_end(pam_handle_t *pamh, int pam_status);
+extern int pam_set_item(pam_handle_t *pamh, int item_type, const void *item);
+extern int pam_authenticate(pam_handle_t *pamh, int flags);
+extern int pam_acct_mgmt(pam_handle_t *pamh, int flags);
+#else
 #include <security/pam_appl.h>
+#endif
 #include <netsite.h>
 #include <definesEnterprise.h>
 #include <libaccess/pamauth.h>
@@ -47,12 +83,17 @@
 
 
 static int digits(int i);
+#if defined(LINUX) || defined(__linux__)
+static int converse(int num_msg, const struct pam_message **msgm,
+                    struct pam_response **response, void *appdata_ptr);
+#else
 static int converse(int num_msg, struct pam_message **msgm,
                     struct pam_response **response, void *appdata_ptr);
 
 /* http://sac.sfbay.sun.com/PSARC/2002/053/contract-01 */
 int _getgroupsbymember(const char *username, gid_t gid_array[],
                        int maxgids, int numgids);
+#endif
 
 
 
@@ -70,7 +111,7 @@ int pamauth_authenticate(const char *user, const char *password)
     int ret;
 
     pam_conv.conv = converse;
-    pam_conv.appdata_ptr = NULL;
+    pam_conv.appdata_ptr = (void *)password;
 
     if ((ret = pam_start(PRODUCT_DAEMON_BIN, user, &pam_conv, &pamh))
         != PAM_SUCCESS) {
@@ -137,6 +178,9 @@ int pamauth_get_groups_for_user(const char *user, char **groups)
     
     /* get pw info */
     pambufsize = (int)sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (pambufsize <= 0) {
+        pambufsize = 1024;
+    }
     if ((pambuff = (char*)MALLOC(pambufsize)) == NULL) {
         return(-1);
     }
@@ -145,15 +189,31 @@ int pamauth_get_groups_for_user(const char *user, char **groups)
         goto error;
     }
     
-    util_getpwnam(user, pw, pambuff, pambufsize);
+    if (!util_getpwnam(user, pw, pambuff, pambufsize)) {
+        goto error;
+    }
     
     /* temp space for _getgroupsbymember() call below */
-    if ((gids = CALLOC((uint_t)ngroups_max * sizeof (gid_t))) == NULL) {
+    if ((gids = (gid_t *)CALLOC((size_t)ngroups_max * sizeof (gid_t))) == NULL) {
         goto error;
     }
     
     gids[0] = pw->pw_gid;
+#if defined(LINUX) || defined(__linux__)
+    ngroups = ngroups_max;
+    if (getgrouplist(user, pw->pw_gid, gids, &ngroups) == -1) {
+        gid_t *new_gids = (gid_t *)REALLOC(gids, (size_t)ngroups * sizeof (gid_t));
+        if (new_gids == NULL) {
+            goto error;
+        }
+        gids = new_gids;
+        if (getgrouplist(user, pw->pw_gid, gids, &ngroups) == -1) {
+            goto error;
+        }
+    }
+#else
     ngroups = _getgroupsbymember(user, gids, ngroups_max, 1);
+#endif
     
     /* print each group (and its gid) to comma-separated list into *groups */
     if ((*groups = (char *)MALLOC(bufsize)) == NULL) {
@@ -218,11 +278,15 @@ int pamauth_userexists(const char* user)
     char* buffer;
     
     bufsize = (int)sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (bufsize <= 0) {
+        bufsize = 1024;
+    }
     if ((buffer = (char*)MALLOC(bufsize)) == NULL) {
         return(LAS_EVAL_FAIL);
     }
     
     if ((pw = (struct passwd *)MALLOC(sizeof(struct passwd))) == NULL) {
+        FREE(buffer);
         return(LAS_EVAL_FAIL);
     }
     
@@ -243,32 +307,69 @@ int pamauth_userexists(const char* user)
  * PAM conversation function
  *
  */
+#if defined(LINUX) || defined(__linux__)
+static int converse(int num_msg, const struct pam_message **msgm,
+                    struct pam_response **response, void *appdata_ptr)
+#else
 static int converse(int num_msg, struct pam_message **msgm,
                     struct pam_response **response, void *appdata_ptr)
+#endif
 {
     int i;
     struct pam_response *reply;
 
-    if (num_msg <= 0)
+    if (num_msg <= 0 || msgm == NULL || response == NULL)
         return (PAM_CONV_ERR);
 
-    if ((reply = calloc(num_msg, sizeof (struct pam_response))) == NULL) {
+    if ((reply = (struct pam_response *)calloc(num_msg, sizeof (struct pam_response))) == NULL) {
         return (PAM_CONV_ERR);
     }
 
     for (i = 0; i < num_msg; i++) {
+        if (msgm[i] == NULL) {
+            int j;
+            for (j = 0; j < i; j++) {
+                if (reply[j].resp != NULL) {
+                    memset(reply[j].resp, 0, strlen(reply[j].resp));
+                    free(reply[j].resp);
+                }
+            }
+            free(reply);
+            return (PAM_CONV_ERR);
+        }
+
+        reply[i].resp_retcode = 0;
+        reply[i].resp = NULL;
+
         switch (msgm[i]->msg_style) {
         case PAM_PROMPT_ECHO_OFF:
+            if (appdata_ptr != NULL) {
+                reply[i].resp = strdup((const char *)appdata_ptr);
+                if (reply[i].resp == NULL) {
+                    int j;
+                    for (j = 0; j < i; j++) {
+                        if (reply[j].resp != NULL) {
+                            memset(reply[j].resp, 0, strlen(reply[j].resp));
+                            free(reply[j].resp);
+                        }
+                    }
+                    free(reply);
+                    return (PAM_CONV_ERR);
+                }
+            }
+            break;
         case PAM_PROMPT_ECHO_ON:
         case PAM_ERROR_MSG:
         case PAM_TEXT_INFO:
+#ifdef PAM_MSG_NOCONF
         case PAM_MSG_NOCONF:
+#endif
+#ifdef PAM_CONV_INTERRUPT
         case PAM_CONV_INTERRUPT:
+#endif
         default:
             break;
         }
-        reply[i].resp_retcode = 0;
-        reply[i].resp = "";
     }
 
     *response = reply;

@@ -85,6 +85,11 @@ ifeq ($(BASE_OS),SunOS)
 FEAT_PAM=1
 SYSTEM_LIB+=$(PAM_LIBS)
 endif
+ifeq ($(BASE_OS),Linux)
+FEAT_PAM=1
+PAM_LIBS=:libpam.so.0
+SYSTEM_LIB+=$(PAM_LIBS)
+endif
 # GSSAPI authentication
 ifeq ($(BASE_OS),SunOS)
 FEAT_GSS=1

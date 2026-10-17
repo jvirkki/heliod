@@ -256,6 +256,16 @@ test-proxy:
 	$(BUILD_ROOT)/test/proxy_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- reverse-proxy smoke test passed -----"
 
+# PAM authentication conversation and password-aging lifecycle test: compiles
+# src/server/libaccess/pamauth.c under ASAN/UBSAN against a mock PAM framework
+# modeled on Solaris libpam free_resp() and verifies password-aging warnings,
+# expired-password errors, PAM_PROMPT_ECHO_OFF responses, and user/group lookup
+# error paths.
+test-pam:
+	@echo "----- Running PAM auth smoke test -----"
+	$(BUILD_ROOT)/test/pam_auth_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- PAM auth smoke test passed -----"
+
 # Event I/O smoke test (uses the https-test instance from make install).
 test-event:
 	@echo "----- Running event I/O smoke test -----"
