@@ -65,7 +65,10 @@ extern char *proxy_custom_signature;
 
 static inline PRBool server_generated(Session *sn, Request *rq)
 {
-    while (rq != rq->orig_rq)
+    if (!rq || !sn)
+        return PR_FALSE;
+
+    while (rq->orig_rq && rq != rq->orig_rq)
         rq = rq->orig_rq;
     PRBool internal_request = INTERNAL_REQUEST(rq);
 
@@ -82,6 +85,9 @@ static inline PRBool server_generated(Session *sn, Request *rq)
 
 static inline PRBool user_typed_url(Session *sn, Request *rq)
 {
+    if (!rq || !rq->headers)
+        return PR_FALSE;
+
     return (!INTERNAL_REQUEST(rq) &&
             !pblock_findkey(pb_key_referer, rq->headers) &&
             !route_get_proxy_addr(sn, rq) &&
@@ -93,6 +99,9 @@ static inline PRBool user_typed_url(Session *sn, Request *rq)
 
 static inline void set_action_check_url(Session *sn, Request *rq)
 {
+    if (!rq || !rq->vars)
+        return;
+
     const char *error_action = XP_GetClientStr(DBT_check_url);
     pblock_kvinsert(pb_key_error_action,
                     error_action,
@@ -105,6 +114,9 @@ static inline void set_action_check_url(Session *sn, Request *rq)
 
 static inline void set_action_try_later(Session *sn, Request *rq)
 {
+    if (!rq || !rq->vars)
+        return;
+
     const char *error_action = XP_GetClientStr(DBT_try_later);
     pblock_kvinsert(pb_key_error_action,
                     error_action,
@@ -116,6 +128,9 @@ static inline void set_action_try_later(Session *sn, Request *rq)
 
 static inline void set_action_mime_type_blocked(Session *sn, Request *rq)
 {
+    if (!rq || !rq->vars)
+        return;
+
     const char *error_action = XP_GetClientStr(DBT_mime_type_blocked);
     pblock_kvinsert(pb_key_error_action,
                     error_action,
@@ -140,6 +155,9 @@ static inline void set_action_default(Session *sn, Request *rq)
 
 static void set_desc(Session *sn, Request *rq, const char *fmt, ...)
 {
+    if (!rq || !rq->vars)
+        return;
+
     va_list args;
 
     va_start(args, fmt);
@@ -165,15 +183,18 @@ static void set_desc_agent_error(Session *sn,
                                  int port,
                                  const char *msg)
 {
+    if (!host)
+        host = "";
+
     char *html_host = util_html_escape(host);
     if (!html_host)
         return;
 
     set_desc(sn, rq,
              XP_GetClientStr(DBT_unexpected_error_X_Y_X_Y_because_Z),
-             html_host, port, html_host, port, msg);
+             html_host, port, html_host, port, msg ? msg : "");
 
-    pool_free(sn->pool, html_host);
+    pool_free(sn ? sn->pool : NULL, html_host);
 }
 
 
@@ -192,23 +213,27 @@ static void agent_error(int degree,
     PR_ASSERT(code == PROTOCOL_BAD_GATEWAY ||
               code == PROTOCOL_GATEWAY_TIMEOUT);
 
-    char *msg = (char *)pool_malloc(sn->pool, MAX_MSG_LEN);
+    pool_handle_t *pool = sn ? sn->pool : NULL;
+    char *msg = (char *)pool_malloc(pool, MAX_MSG_LEN);
     if (!msg)
         return;
 
     PR_vsnprintf(msg, MAX_MSG_LEN, fmt, args);
     set_desc_agent_error(sn, rq, host, port, msg);
     set_action_default(sn, rq);
-    pblock_kvinsert(pb_key_error_fn,
-                    MAGNUS_INTERNAL_SEND_PROXY_ERROR,
-                    MAGNUS_INTERNAL_SEND_PROXY_ERROR_LEN,
-                    rq->vars);
+    if (rq && rq->vars) {
+        pblock_kvinsert(pb_key_error_fn,
+                        MAGNUS_INTERNAL_SEND_PROXY_ERROR,
+                        MAGNUS_INTERNAL_SEND_PROXY_ERROR_LEN,
+                        rq->vars);
+    }
 
-    pool_free(sn->pool, msg);
+    log_error(degree, fn, sn, rq, "%s", msg);
 
-    log_error_v(degree, fn, sn, rq, fmt, args);
+    pool_free(pool, msg);
 
-    protocol_status(sn, rq, code, NULL);
+    if (rq)
+        protocol_status(sn, rq, code, NULL);
 }
 
 
@@ -263,6 +288,9 @@ void proxyerror_channel_error(int degree,
     // XXX what about SOCKS connection problems? There's no point in telling
     // the user to check the URL if the real problem was a problem with sockd
 
+    if (!host)
+        host = "";
+
     NsprError error;
     error.save();
 
@@ -293,7 +321,7 @@ void proxyerror_channel_error(int degree,
         // connect() refused
         set_desc(sn, rq,
                  XP_GetClientStr(DBT_connect_refused_X_Y),
-                 host, port);
+                 html_host, port);
         set_action_default(sn, rq);
         break;
 
@@ -306,12 +334,14 @@ void proxyerror_channel_error(int degree,
         break;
     }
 
-    pool_free(sn->pool, html_host);
+    pool_free(sn ? sn->pool : NULL, html_host);
 
-    pblock_kvinsert(pb_key_error_fn,
-                    MAGNUS_INTERNAL_SEND_PROXY_ERROR,
-                    MAGNUS_INTERNAL_SEND_PROXY_ERROR_LEN,
-                    rq->vars);
+    if (rq && rq->vars) {
+        pblock_kvinsert(pb_key_error_fn,
+                        MAGNUS_INTERNAL_SEND_PROXY_ERROR,
+                        MAGNUS_INTERNAL_SEND_PROXY_ERROR_LEN,
+                        rq->vars);
+    }
 
     if (server_generated(sn, rq))
         degree = LOG_VERBOSE;
@@ -327,7 +357,8 @@ void proxyerror_channel_error(int degree,
     // Note that RFC 2616 seems to imply that 504 Gateway Timeout should always
     // be returned when there is a problem contacting an origin server (that
     // is, PROTOCOL_GATEWAY_TIMEOUT isn't just for timeouts)
-    protocol_status(sn, rq, PROTOCOL_GATEWAY_TIMEOUT, system_errmsg());
+    if (rq)
+        protocol_status(sn, rq, PROTOCOL_GATEWAY_TIMEOUT, system_errmsg());
 }
 
 
@@ -337,11 +368,12 @@ int proxyerror_magnus_internal_send_proxy_error(pblock *pb,
                                                 Session *sn,
                                                 Request *rq)
 {
-#ifdef FEAT_PROXY
 /*
     PR_ASSERT(rq->status_num == PROTOCOL_BAD_GATEWAY ||
               rq->status_num == PROTOCOL_GATEWAY_TIMEOUT);
 */
+    if (!sn || !sn->csd || !rq || !rq->vars || !rq->srvhdrs)
+        return REQ_NOACTION;
 
     const char *desc = pblock_findkeyval(pb_key_error_desc, rq->vars);
     if (!desc)
@@ -353,14 +385,18 @@ int proxyerror_magnus_internal_send_proxy_error(pblock *pb,
 
     const char *signature;
     char signature_buffer[256];
+#ifdef FEAT_PROXY
     if (proxy_custom_signature) {
         signature = proxy_custom_signature;
-    } else {
+    } else
+#endif
+    {
+        const char *vhost = conf_get_true_globals()->Vserver_hostname;
         PR_snprintf(signature_buffer,
                     sizeof(signature_buffer),
                     XP_GetClientStr(DBT_product_X_at_Y_Z),
                     PRODUCT_ID,
-                    conf_get_true_globals()->Vserver_hostname,
+                    vhost ? vhost : "localhost",
                     conf_get_true_globals()->Vport);
         signature = signature_buffer;
     }
@@ -384,7 +420,4 @@ int proxyerror_magnus_internal_send_proxy_error(pblock *pb,
         pblock_kninsert(pb_key_p2c_cl, len, rq->vars);
 
     return REQ_PROCEED;
-#else
-    return REQ_NOACTION;
-#endif
 }

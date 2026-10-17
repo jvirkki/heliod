@@ -349,10 +349,13 @@ and HTTP/2:
   event HTTP/1.1, and HTTP/2 clients drive continuous traffic complete with zero
   worker crashes or PID changes.  Reuses `https-test`.
 - `proxy_smoke.sh <work-root>` — Reverse proxy configuration, routing, sticky
-  sessions, and dynamic reconfiguration under load (`libproxy/route.cpp`,
-  `libproxy/reverse.cpp`, `libproxy/stuff.cpp`, `libproxy/httpclient.cpp`).
-  Starts two local HTTP/1.1 origin servers and configures `NameTrans fn="map"`,
-  `NameTrans fn="reverse-map"`, `Route fn="set-origin-server"`, and
+  sessions, outbound TLS hardening, origin health / offline recovery, proxy
+  error logging, and dynamic reconfiguration under load (`libproxy/route.cpp`,
+  `libproxy/channel.cpp`, `libproxy/proxyerror.cpp`, `libproxy/reverse.cpp`,
+  `libproxy/stuff.cpp`, `libproxy/httpclient.cpp`).
+  Starts local HTTP/1.1 and TLS 1.2 / TLS 1.3 / mTLS origin servers and
+  configures `NameTrans fn="map"`, `NameTrans fn="reverse-map"`,
+  `Route fn="set-origin-server"`, `ObjectType fn="ssl-client-config"`, and
   `Service fn="proxy-retrieve"` across `io-model=classic` (18180) and
   `io-model=event` (18181) listeners.  Verifies: (1) single-origin forwarding
   over classic HTTP/1.1, event HTTP/1.1, and HTTP/2 (`h2c`), trailing-slash
@@ -366,7 +369,17 @@ and HTTP/2:
   invalid URL path or missing `server` parameter, followed by a valid
   reconfiguration and full server restart; (5) 12 consecutive dynamic
   reconfigurations under concurrent classic and event proxy load with zero
-  worker crashes or PID changes.  Reuses `https-test`.
+  worker crashes or PID changes; (6) outbound TLS 1.2-only and TLS 1.3-only
+  origin forwarding, TLS 1.2 client-certificate authentication via
+  `ssl-client-config client-cert-nickname`, and verification that the outbound
+  ClientHello uses standard TLS record encoding (`0x16`) with SNI and
+  `SSL_V2_COMPATIBLE_HELLO` disabled; (7) proxy error page (`502`/`504`) and
+  `CORE7740`/`HTTP7765`/`HTTP7755` error log generation on unreachable origin,
+  DNS failure, and mid-header EOF/reset without crashing; (8) slow responses
+  exceeding `http-client-config timeout` return `504` without marking a healthy
+  origin offline, while a genuinely stopped origin is marked offline, fails over
+  to its healthy peer, and is automatically recovered within the configured
+  `<offline-check-interval>` (`2` seconds).  Reuses `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 

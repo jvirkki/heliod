@@ -53,55 +53,75 @@ NSAPI_PUBLIC int log_error_v(int degree, const char *func,
 {
     char errstr[MAX_ERROR_LEN], *rhost;
     int pos;
+    const int max_pos = (int)sizeof(errstr) - 1;
 
     if (!ereport_can_log(degree))
         return IO_OKAY;
 
     pos = 0;
     if(sn && sn->iaddr.s_addr != 0 /* internal Sessions have iaddr == 0 */) {
-        if(!(rhost = session_dns(sn))) 
+        rhost = session_dns(sn);
+        if(!rhost && sn->client)
             rhost = pblock_findkeyval(pb_key_ip, sn->client);
-        pos += util_snprintf(&errstr[pos], sizeof(errstr) - pos,
-                             XP_GetAdminStr(DBT_logForHostX),
-                             ERROR_CUTOFF, rhost);
+        if(rhost && pos < max_pos) {
+            pos += util_snprintf(&errstr[pos], sizeof(errstr) - pos,
+                                 XP_GetAdminStr(DBT_logForHostX),
+                                 ERROR_CUTOFF, rhost);
+            if(pos > max_pos)
+                pos = max_pos;
+        }
     }
     if(rq) {
-        const char *fmt = XP_GetAdminStr(DBT_logTryingToMethodXUriY);
+        const char *rq_fmt = XP_GetAdminStr(DBT_logTryingToMethodXUriY);
         Request *curr_rq = rq;
         char *prev_method = NULL;
         char *prev_uri = NULL;
         for(;;) {
-            char *method = pblock_findkeyval(pb_key_method, curr_rq->reqpb);
-            char *uri = pblock_findkeyval(pb_key_uri, curr_rq->reqpb);
+            char *method = curr_rq->reqpb ? pblock_findkeyval(pb_key_method, curr_rq->reqpb) : NULL;
+            char *uri = curr_rq->reqpb ? pblock_findkeyval(pb_key_uri, curr_rq->reqpb) : NULL;
 
             if(method && uri &&
                (!prev_method || strcmp(method, prev_method) ||
                 !prev_uri || strcmp(uri, prev_uri)))
             {
-                if(pos > 0 && pos < sizeof(errstr) - 1)
+                if(pos > 0 && pos < max_pos)
                     errstr[pos++] = ' ';
-                pos += util_snprintf(&errstr[pos], sizeof(errstr) - pos, fmt,
-                                     ERROR_CUTOFF, method, ERROR_CUTOFF, uri);
-                fmt = XP_GetAdminStr(DBT_logWhileTryingToMethodXUriY);
+                if(pos < max_pos) {
+                    pos += util_snprintf(&errstr[pos], sizeof(errstr) - pos, rq_fmt,
+                                         ERROR_CUTOFF, method, ERROR_CUTOFF, uri);
+                    if(pos > max_pos)
+                        pos = max_pos;
+                }
+                rq_fmt = XP_GetAdminStr(DBT_logWhileTryingToMethodXUriY);
             }
 
             prev_method = method;
             prev_uri = uri;
 
-            if(curr_rq->orig_rq == curr_rq)
+            if(!curr_rq->orig_rq || curr_rq->orig_rq == curr_rq)
                 break;
 
             curr_rq = curr_rq->orig_rq;
         }
     }
-    if(sn || rq)
+    if((sn || rq) && pos > 0 && pos < max_pos) {
         pos += util_snprintf(&errstr[pos], sizeof(errstr) - pos,
                              XP_GetAdminStr(DBT_logCommaSpace));
-    if(func)
+        if(pos > max_pos)
+            pos = max_pos;
+    }
+    if(func && pos < max_pos) {
         pos += util_snprintf(&errstr[pos], sizeof(errstr) - pos, 
                              XP_GetAdminStr(DBT_logFunctionXReports), func);
+        if(pos > max_pos)
+            pos = max_pos;
+    }
 
-    pos += util_vsnprintf(&errstr[pos], sizeof(errstr) - pos, fmt, args);
+    if(fmt && pos < max_pos) {
+        pos += util_vsnprintf(&errstr[pos], sizeof(errstr) - pos, fmt, args);
+        if(pos > max_pos)
+            pos = max_pos;
+    }
 
     errstr[pos] = '\0';
 

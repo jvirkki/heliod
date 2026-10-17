@@ -76,6 +76,12 @@ Func route_magnus_internal_force_http_route;
 PRStatus route_init(void);
 
 /*
+ * route_set_offline_check_interval sets the interval between health checks of
+ * offline origin and proxy servers.
+ */
+void route_set_offline_check_interval(PRIntervalTime interval);
+
+/*
  * route_init_late creates a thread to monitor offline servers.
  */
 PRStatus route_init_late(void);

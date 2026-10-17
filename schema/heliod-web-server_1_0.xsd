@@ -322,6 +322,17 @@
         </xs:annotation>
       </xs:element>
 
+      <xs:element name="offline-check-interval" type="intervalType" minOccurs="0" maxOccurs="1">
+        <xs:annotation>
+          <xs:documentation>
+            The interval, in seconds, at which offline origin or proxy servers are probed to determine whether they have come back online.
+          </xs:documentation>
+          <xs:appinfo>
+            <appinfo:implicit>30</appinfo:implicit>
+          </xs:appinfo>
+        </xs:annotation>
+      </xs:element>
+
       <xs:element name="audit-accesses" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1">
         <xs:annotation>
           <xs:appinfo>

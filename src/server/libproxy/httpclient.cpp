@@ -387,6 +387,7 @@ enum HttpProcessorResult {
     HTTP_PROCESSOR_KEEP_ALIVE, // success, channel can be kept open
     HTTP_PROCESSOR_CLOSE, // success, but channel cannot be kept open
     HTTP_PROCESSOR_CLIENT_FAILURE, // transaction failed due to client error
+    HTTP_PROCESSOR_RESPONSE_FAILURE, // response failed after server connected/responded (server still online)
     HTTP_PROCESSOR_SERVER_FAILURE, // transaction failed due to server error
     HTTP_PROCESSOR_RETRY // server error, but request can be retried
 };
@@ -3423,7 +3424,7 @@ http_processor_finished:
     } else if (status == STATUS_BEGIN_RESPONSE_ERROR) {
         // begin_response() already logged an error message
         svr_status = INTR;
-        result = HTTP_PROCESSOR_SERVER_FAILURE;
+        result = HTTP_PROCESSOR_RESPONSE_FAILURE;
 
     } else {
         // Some error condition we need to log an error message for
@@ -3437,7 +3438,7 @@ http_processor_finished:
                                    PROTOCOL_BAD_GATEWAY, 
                                    XP_GetAdminStr(DBT_bogus_chunked_res_body));
             svr_status = INTR;
-            result = HTTP_PROCESSOR_SERVER_FAILURE;
+            result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             break;
 
         case STATUS_CLIENT_BODY_EOF:
@@ -3492,12 +3493,16 @@ http_processor_finished:
                                    PROTOCOL_BAD_GATEWAY, 
                                    XP_GetAdminStr(DBT_res_hdr_server_closed));
             svr_status = INTR;
-            result = retry_or_failure(sn, rq, request, &response);
+            if (server.response_received > 0) {
+                result = HTTP_PROCESSOR_RESPONSE_FAILURE;
+            } else {
+                result = retry_or_failure(sn, rq, request, &response);
+            }
             break;
 
         case STATUS_SERVER_HEADER_READ_ERROR:
             if (timeout_error(prerr)) {
-                proxyerror_agent_errorf(server_eof_degree(request),
+                proxyerror_agent_errorf(LOG_FAILURE,
                                         SERVICE_HTTP, sn, rq,
                                         channel_get_remote_host(channel),
                                         channel_get_remote_port(channel),
@@ -3505,6 +3510,9 @@ http_processor_finished:
                                         XP_GetAdminStr(DBT_res_hdr_because_X),
                                         system_errmsg());
                 svr_status = TIMEOUT;
+                // A response read timeout on an established connection means
+                // this request was slow, not that the origin server is down.
+                result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             } else {
                 proxyerror_agent_errorf(server_eof_degree(request),
                                         SERVICE_HTTP, sn, rq,
@@ -3514,8 +3522,12 @@ http_processor_finished:
                                         XP_GetAdminStr(DBT_res_hdr_because_X),
                                         system_errmsg());
                 svr_status = INTR;
+                if (server.response_received > 0) {
+                    result = HTTP_PROCESSOR_RESPONSE_FAILURE;
+                } else {
+                    result = retry_or_failure(sn, rq, request, &response);
+                }
             }
-            result = retry_or_failure(sn, rq, request, &response);
             break;
 
         case STATUS_SERVER_BODY_EOF:
@@ -3526,7 +3538,7 @@ http_processor_finished:
                                    PROTOCOL_BAD_GATEWAY,
                                    XP_GetAdminStr(DBT_res_body_server_closed));
             svr_status = INTR;
-            result = HTTP_PROCESSOR_SERVER_FAILURE;
+            result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             break;
 
         case STATUS_SERVER_BODY_READ_ERROR:
@@ -3547,7 +3559,7 @@ http_processor_finished:
                                         system_errmsg());
                 svr_status = INTR;
             }
-            result = HTTP_PROCESSOR_SERVER_FAILURE;
+            result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             break;
 
         case STATUS_SERVER_BODY_WRITE_ERROR:
@@ -3558,7 +3570,7 @@ http_processor_finished:
                                     XP_GetAdminStr(DBT_req_body_because_X),
                                     system_errmsg());
             svr_status = INTR;
-            result = HTTP_PROCESSOR_SERVER_FAILURE;
+            result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             break;
 
         case STATUS_POLL_ERROR:
@@ -3570,7 +3582,7 @@ http_processor_finished:
                                     system_errmsg());
             cli_status = INTR;
             svr_status = INTR;
-            result = HTTP_PROCESSOR_SERVER_FAILURE;
+            result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             break;
 
         default:
@@ -3582,7 +3594,7 @@ http_processor_finished:
                                    XP_GetAdminStr(DBT_unexpected_error));
             cli_status = INTR;
             svr_status = INTR;
-            result = HTTP_PROCESSOR_SERVER_FAILURE;
+            result = HTTP_PROCESSOR_RESPONSE_FAILURE;
             break;
         }
     }
@@ -4080,15 +4092,21 @@ int httpclient_process(pblock *pb,
             goto httpclient_processor_finished;
 
         case HTTP_PROCESSOR_CLIENT_FAILURE:
-            // Destroy the channel as it may be in an inconsistent state
+        case HTTP_PROCESSOR_RESPONSE_FAILURE:
+            // Destroy the channel as it may be in an inconsistent state, but
+            // do not mark the origin server offline since it is reachable.
             channel_release(channel, PR_INTERVAL_NO_WAIT);
             res = REQ_ABORTED;
             goto httpclient_processor_finished;
 
         case HTTP_PROCESSOR_SERVER_FAILURE:
-            // That server sucked
-            channel_purge(channel);
-            route_offline(sn, rq, &proxy_addr, &origin_addr);
+            // If we were reusing a persistent connection, only discard this
+            // stale channel rather than marking the entire origin offline.
+            if (request.reusing_persistent) {
+                channel_release(channel, PR_INTERVAL_NO_WAIT);
+            } else {
+                channel_purge(channel);
+            }
             res = REQ_ABORTED;
             goto httpclient_processor_finished;
         }
@@ -4098,16 +4116,16 @@ int httpclient_process(pblock *pb,
         PR_ASSERT(result == HTTP_PROCESSOR_RETRY);
         PR_ASSERT(request.can_retry);
 
-        if (retry == 0 && request.reusing_persistent && config->retries > 1) {
-            // This channel is dead, but we'll try again with a new channel to
-            // the same server
+        if (request.reusing_persistent) {
+            // This persistent channel was stale; close it and retry with a
+            // fresh connection to the same server before blaming the server.
             channel_release(channel, PR_INTERVAL_NO_WAIT);
         } else {
-            // That server sucked.  We want one that sucks less.
+            // Fresh connection closed/failed before sending a response; purge
+            // idle channels and retry.  If the server is genuinely down,
+            // channel_acquire() on the next attempt will fail and trigger
+            // route_offline().
             channel_purge(channel);
-            res = route_offline(sn, rq, &proxy_addr, &origin_addr);
-            if (res != REQ_PROCEED && res != REQ_NOACTION)
-                goto httpclient_processor_finished;
         }
 
         // Start again from the top...

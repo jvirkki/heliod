@@ -299,6 +299,8 @@ struct FuncStruct func_standard[] = {
     {"http-client-config", httpclient_http_client_config, NULL, 0},
     {"service-http", httpclient_service_http, NULL, 0},
     {"proxy-retrieve", httpclient_service_http, NULL, 0},
+    {"service-gateway-dump", route_service_gateway_dump, NULL, 0},
+    {"service-channel-dump", channel_service_channel_dump, NULL, 0},
     {"magnus-internal/send-proxy-error", proxyerror_magnus_internal_send_proxy_error, NULL, 0},
     {"check-request-limits", check_request_limits, NULL, 0},
     {"init-request-limits", init_request_limits, NULL, 0},

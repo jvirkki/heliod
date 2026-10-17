@@ -42,9 +42,11 @@
 #include "netsite.h"
 #include "private/pprio.h"
 #include "ssl.h"
+#include "sslproto.h"
 #include "cert.h"
 #include "key.h"
 #include "pk11func.h"
+#include "base/servnss.h"
 #include "base/pblock.h"
 #include "base/util.h"
 #include "base/systhr.h"
@@ -577,7 +579,9 @@ static PRStatus get_client_cert_and_key(const char *nickname,
     char nickname_copy[256];
     util_strlcpy(nickname_copy, nickname, sizeof(nickname_copy));
 
-    cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), nickname_copy);
+    cert = servnss_get_cert_from_nickname(nickname_copy);
+    if (!cert)
+        cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), nickname_copy);
     if (!cert) {
         NsprError::setErrorf(PR_INVALID_ARGUMENT_ERROR,
                              XP_GetAdminStr(DBT_unknown_cert_X),
@@ -597,7 +601,29 @@ static PRStatus get_client_cert_and_key(const char *nickname,
                 system_errmsg());
     }
 
-    key = PK11_FindKeyByAnyCert(cert, NULL);
+    if (strchr(nickname_copy, ':')) {
+        char *token = STRDUP(nickname_copy);
+        if (token) {
+            char *colon = strchr(token, ':');
+            if (colon) {
+                *colon = '\0';
+                PK11SlotInfo *slot = PK11_FindSlotByName(token);
+                if (slot) {
+                    key = PK11_FindPrivateKeyFromCert(slot, cert, NULL);
+                    PK11_FreeSlot(slot);
+                }
+            }
+            FREE(token);
+        }
+    } else {
+        PK11SlotInfo *slot = PK11_GetInternalKeySlot();
+        if (slot) {
+            key = PK11_FindPrivateKeyFromCert(slot, cert, NULL);
+            PK11_FreeSlot(slot);
+        }
+    }
+    if (!key)
+        key = PK11_FindKeyByAnyCert(cert, NULL);
     if (!key) {
         NsprError::setErrorf(PR_INVALID_ARGUMENT_ERROR,
                              XP_GetAdminStr(DBT_no_key_for_X_because_Y),
@@ -996,8 +1022,21 @@ static SECStatus GetClientAuthData_client_cert_nickname(
     SECKEYPrivateKey **pRetKey)
 {
     const Daemon *daemon = (const Daemon *)arg;
+    if (!daemon || !daemon->client_cert || !daemon->client_key)
+        return SECFailure;
     *pRetCert = CERT_DupCertificate(daemon->client_cert);
     *pRetKey = SECKEY_CopyPrivateKey(daemon->client_key);
+    if (!*pRetCert || !*pRetKey) {
+        if (*pRetCert) {
+            CERT_DestroyCertificate(*pRetCert);
+            *pRetCert = NULL;
+        }
+        if (*pRetKey) {
+            SECKEY_DestroyPrivateKey(*pRetKey);
+            *pRetKey = NULL;
+        }
+        return SECFailure;
+    }
     return SECSuccess;
 }
 PR_END_EXTERN_C
@@ -1030,13 +1069,26 @@ static PRStatus enable_ssl(PRFileDesc *fd,
 
     PR_ASSERT(sslfd == fd);
 
-    if (SSL_OptionSet(fd, SSL_SECURITY, PR_TRUE) < 0)
+    if (SSL_OptionSet(fd, SSL_SECURITY, PR_TRUE) != SECSuccess)
         return PR_FAILURE;
 
-    SSL_OptionSet(fd, SSL_HANDSHAKE_AS_CLIENT, PR_TRUE);
-    SSL_OptionSet(fd, SSL_ENABLE_SSL2, PR_TRUE);
-    SSL_OptionSet(fd, SSL_ENABLE_SSL3, PR_TRUE);
-    SSL_OptionSet(fd, SSL_ENABLE_TLS, PR_TRUE);
+    if (SSL_OptionSet(fd, SSL_HANDSHAKE_AS_CLIENT, PR_TRUE) != SECSuccess)
+        return PR_FAILURE;
+
+    // Disable SSLv2 and SSLv2-compatible ClientHello formatting; ignore
+    // errors on NSS versions where SSLv2 options are completely removed.
+    SSL_OptionSet(fd, SSL_ENABLE_SSL2, PR_FALSE);
+    SSL_OptionSet(fd, SSL_V2_COMPATIBLE_HELLO, PR_FALSE);
+
+    // Enforce modern TLS version range (TLS 1.2 minimum, TLS 1.3 maximum)
+    // matching the listener-side hardening in sslconf.cpp.
+    SSLVersionRange vrange;
+    vrange.min = SSL_LIBRARY_VERSION_TLS_1_2;
+    vrange.max = SSL_LIBRARY_VERSION_TLS_1_3;
+    if (SSL_VersionRangeSet(fd, &vrange) != SECSuccess)
+        return PR_FAILURE;
+
+    SSL_SetPKCS11PinArg(fd, NULL);
 
     if (daemon->client_cert && daemon->client_key) {
         // We should present a specific client cert
@@ -1048,11 +1100,14 @@ static PRStatus enable_ssl(PRFileDesc *fd,
         SSL_GetClientAuthDataHook(fd, NSS_GetClientAuthData, NULL);
     }
 
-    if (validate_server_cert) {
-        // Let NSS validate the server cert
-        PR_ASSERT(!strchr(daemon->host, ':'));
-        SSL_SetURL(fd, daemon->host);
-    } else {
+    // Always set the target hostname on the SSL socket so NSS populates the
+    // TLS SNI extension in the ClientHello regardless of whether server
+    // certificate validation is enabled.
+    PR_ASSERT(!strchr(daemon->host, ':'));
+    if (SSL_SetURL(fd, daemon->host) != SECSuccess)
+        return PR_FAILURE;
+
+    if (!validate_server_cert) {
         // We'll trust any server cert
         SSL_AuthCertificateHook(fd,
                                 AuthCertificateHook_always_success,
@@ -1154,12 +1209,14 @@ static Channel * connect_to_daemon(Session *sn,
     }
 #endif
 
-    pblock_nninsert("dns-start", (int)PR_IntervalToMilliseconds(PR_IntervalNow()), rq->vars);
+    if (rq && rq->vars)
+        pblock_nninsert("dns-start", (int)PR_IntervalToMilliseconds(PR_IntervalNow()), rq->vars);
 
     // Process DNS directives
     he = servact_gethostbyname(daemon->host, sn, rq);
 
-    pblock_nninsert("dns-end", (int)PR_IntervalToMilliseconds(PR_IntervalNow()), rq->vars);
+    if (rq && rq->vars)
+        pblock_nninsert("dns-end", (int)PR_IntervalToMilliseconds(PR_IntervalNow()), rq->vars);
 
     if (!he)
         goto connect_to_daemon_error;
@@ -1174,7 +1231,8 @@ static Channel * connect_to_daemon(Session *sn,
 
         // Connect, trying up to 3 A records if necessary
         hei = 0;
-        pblock_nninsert("conn-start", (int)PR_IntervalToMilliseconds(PR_IntervalNow()), rq->vars);
+        if (rq && rq->vars)
+            pblock_nninsert("conn-start", (int)PR_IntervalToMilliseconds(PR_IntervalNow()), rq->vars);
         for (int record = 0; record < 3 /* XXX */; record++) {
             PRNetAddr addr;
 
@@ -1245,8 +1303,10 @@ static Channel * connect_to_daemon(Session *sn,
             res = PR_Connect(fd, &addr, timeout);
 
             if (res == PR_SUCCESS) {
-                pblock_nninsert("conn-end", (int)PR_IntervalToMilliseconds(PR_IntervalNow()),
-                                rq->vars);
+                if (rq && rq->vars) {
+                    pblock_nninsert("conn-end", (int)PR_IntervalToMilliseconds(PR_IntervalNow()),
+                                    rq->vars);
+                }
                 if (log_verbose) {
                     log_error(LOG_VERBOSE, NULL, sn, rq,
                               "connected to %s:%d",
@@ -1480,6 +1540,7 @@ int channel_ssl_client_config(pblock *pb, Session *sn, Request *rq)
             }
         } else {
             // Init time, set the default
+            PERM_FREE(_default_client_cert_nickname);
             _default_client_cert_nickname = PERM_STRDUP(nickname);
         }
     }

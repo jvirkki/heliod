@@ -534,6 +534,9 @@ WebServer::ProcessConfiguration(const Configuration *incoming, const Configurati
     if (incoming->accessLogBuffer != orig.accessLogBuffer)
         ChangesNotApplied(DBT_Reconfigure_AccessLogBufferRestart);
 
+    // Update the reverse-proxy offline origin probe interval dynamically
+    route_set_offline_check_interval(incoming->offlineCheckInterval.getPRIntervalTimeValue());
+
     // Warn about JVM changes
     if (!ElementsAreEqual(incoming->getJvm(), orig.getJvm()))
         ChangesNotApplied(DBT_Reconfigure_JVMRestart);
@@ -1267,6 +1270,7 @@ WebServer::Init(int argc, char *argv[])
     control_init();
     error_init();
     route_init();
+    route_set_offline_check_interval(serverXML->server.offlineCheckInterval.getPRIntervalTimeValue());
     channel_init();
     reverse_init();
     httpclient_init();

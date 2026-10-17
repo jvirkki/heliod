@@ -1,3 +1,76 @@
+2026-10-16  Joe McCabe <joe@jmccabe.org>
+
+        * Bug fix: harden outbound reverse-proxy TLS channel, fix TLS 1.2/1.3
+          origin client-certificate authentication, and disable SSLv2-compatible
+          ClientHello encoding (Oracle 22280443, 20852421).
+
+            enable_ssl() in src/server/libproxy/channel.cpp previously
+            configured outbound proxy sockets with legacy
+            SSL_OptionSet(fd, SSL_ENABLE_SSL2/SSL_ENABLE_SSL3/SSL_ENABLE_TLS, PR_TRUE)
+            calls and only invoked SSL_SetURL() when validate_server_cert was
+            enabled.  On NSS 3.x, the legacy SSL_ENABLE_SSL3 / SSL_ENABLE_TLS
+            option calls expand the socket's protocol version range down to
+            SSL 3.0 / TLS 1.0, and omitting SSL_SetURL() when
+            validate-server-cert="false" suppressed the TLS SNI extension on
+            outbound ClientHello messages.  enable_ssl() now explicitly
+            disables SSL_ENABLE_SSL2 and SSL_V2_COMPATIBLE_HELLO, enforces
+            SSL_LIBRARY_VERSION_TLS_1_2 .. SSL_LIBRARY_VERSION_TLS_1_3 via
+            SSL_VersionRangeSet(), sets SSL_SetPKCS11PinArg(), and always
+            calls SSL_SetURL() so SNI is sent regardless of server certificate
+            validation mode.  get_client_cert_and_key() now uses
+            servnss_get_cert_from_nickname() and PK11_FindPrivateKeyFromCert()
+            with token:nickname slot support before falling back to
+            CERT_FindCertByNickname() / PK11_FindKeyByAnyCert().
+
+        * Bug fix / enhancement: prevent false offline marking of healthy
+          reverse-proxy origin servers and make the offline-origin probe
+          interval configurable (Oracle 23495921, 6933187).
+
+            httpclient_process() and http_processor() in
+            src/server/libproxy/httpclient.cpp previously treated single-request
+            response header read timeouts, mid-body errors, and initial failures
+            on reused or single-retry connections as hard server failures that
+            immediately invoked route_offline(), marking healthy origin servers
+            offline across the virtual server.  http_processor() now
+            distinguishes response-stage errors and slow-request read timeouts
+            (HTTP_PROCESSOR_RESPONSE_FAILURE) from connection-establishment
+            failures, and httpclient_process() only marks an origin offline via
+            route_offline() when channel_acquire() cannot establish a
+            connection to the origin.  In src/server/libproxy/route.cpp,
+            check_http_server() now attaches virtual-server objects whose Route
+            directives reference the probed gateway (so ssl-client-config and
+            http-client-config directives in named objects apply during health
+            probes), preserves the canonical gateway URL in rq->vars["path"]
+            and rq->vars["escaped"], and treats PROTOCOL_GATEWAY_TIMEOUT (504)
+            as an offline response alongside PROTOCOL_BAD_GATEWAY (502) and
+            PROTOCOL_REQUEST_TIMEOUT (408).  route_offline_thread() now probes
+            offline gateways on every interval regardless of whether new traffic
+            arrived since the prior pass, and the probe interval is configurable
+            via <offline-check-interval> in schema/heliod-web-server_1_0.xsd
+            (default 30 seconds, dynamically reconfigurable),
+            OfflineCheckInterval in magnus.conf, or offline-check-interval on
+            set-origin-server / set-proxy-server.
+
+        * Bug fix: fix crash in reverse-proxy error logging and error page
+          generation (Oracle 6981086).
+
+            agent_error() in src/server/libproxy/proxyerror.cpp previously
+            passed the same va_list (args) to PR_vsnprintf() and then to
+            log_error_v().  On 64-bit System V AMD64 ABI, PR_vsnprintf()
+            mutates the caller's va_list state in place, so the subsequent
+            log_error_v() / util_vsnprintf() read past the end of the consumed
+            argument list and dereferenced garbage stack pointers whenever
+            degree (e.g. LOG_FAILURE) was enabled.  agent_error() now logs the
+            already-formatted msg buffer via log_error(..., "%s", msg).
+            Also removes the #ifdef FEAT_PROXY guard that stubbed out
+            proxyerror_magnus_internal_send_proxy_error() in standard builds,
+            registers service-gateway-dump and service-channel-dump in
+            src/server/frame/httpd-fn.cpp, HTML-escapes host in the
+            PR_CONNECT_REFUSED_ERROR branch of proxyerror_channel_error(), and
+            guards proxyerror.cpp, channel.cpp, and log_error_v() in
+            src/server/frame/log.cpp against NULL Session/Request pointers and
+            buffer truncation overflow.
+
 2026-10-15  Joe McCabe <joe@jmccabe.org>
 
         * Bug fix: fix dynamic-reconfiguration rollback state corruption and

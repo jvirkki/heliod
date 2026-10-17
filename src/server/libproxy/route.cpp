@@ -51,6 +51,7 @@
 #include "frame/httpdir.h"
 #include "httpdaemon/configuration.h"
 #include "httpdaemon/configurationmanager.h"
+#include "httpdaemon/vsconf.h"
 #include "httpdaemon/WebServer.h"
 #include "NsprWrap/NsprSink.h"
 #include "time/nstime.h"
@@ -226,6 +227,11 @@ static int _route_request_slot = -1;
  * Thread that performs health checks of offline Gateways
  */
 static PRThread *_offline_thread;
+
+/*
+ * Interval between health checks of offline Gateways (default 30 seconds)
+ */
+static PRIntervalTime _offline_check_interval = PR_INTERVAL_NO_WAIT;
 
 /*
  * Set on each call to set_http_server() to indicate routing activity
@@ -717,7 +723,20 @@ static RouteConfig * create_route_config(pblock *pb)
         }
         route->rewrite_host = t;
     }
-    
+
+    // Optional "offline-check-interval" parameter (seconds)
+    if (pb_param *pp = pblock_find("offline-check-interval", pb)) {
+        PRIntervalTime interval = util_getinterval(pp->value, PR_INTERVAL_NO_WAIT);
+        if (interval == PR_INTERVAL_NO_WAIT || interval == PR_INTERVAL_NO_TIMEOUT) {
+            log_error(LOG_MISCONFIG, fn, NULL, NULL,
+                      XP_GetAdminStr(DBT_invalid_X_value_Y_expected_seconds),
+                      pp->name, pp->value);
+            destroy_route_config(route);
+            return NULL;
+        }
+        route_set_offline_check_interval(interval);
+    }
+
     return route;
 }
 
@@ -823,9 +842,24 @@ PRStatus route_init(void)
             if (!_gateway_url_ht[i].lock)
                 _init_status = PR_FAILURE;
         }
+
+        if (_offline_check_interval == PR_INTERVAL_NO_WAIT) {
+            int seconds = conf_getboundedinteger("OfflineCheckInterval",
+                                                 1, 3600, 30);
+            _offline_check_interval = PR_SecondsToInterval(seconds);
+        }
     }
 
     return _init_status;
+}
+
+
+/* ------------------- route_set_offline_check_interval ------------------- */
+
+void route_set_offline_check_interval(PRIntervalTime interval)
+{
+    if (interval != PR_INTERVAL_NO_WAIT && interval != PR_INTERVAL_NO_TIMEOUT)
+        _offline_check_interval = interval;
 }
 
 
@@ -1002,14 +1036,60 @@ static void check_http_server(const VirtualServer *vs, Gateway *gateway)
     // this to pick up options (e.g. ssl-client-config client-cert-nickname),
     // so don't give up if any individual stage reports an error.
     rv = servact_uri2path(sn, rq);
-    if (!rq->os || rv == REQ_ABORTED) {
+    if (!rq->os) {
         log_error(LOG_VERBOSE, CHECK_HTTP_SERVER, sn, rq,
                  "checking server %s failed.", gateway->url);
         goto check_http_server_done;
     }
 
+    // If the Gateway is configured in a named <Object> that was not matched by
+    // the synthetic gateway->url during NameTrans (for example, when NameTrans
+    // fn="map" maps a path prefix like "/app" to a named reverse-proxy object),
+    // attach any object in the virtual server whose Route table references
+    // this Gateway so its ObjectType directives (such as ssl-client-config or
+    // http-client-config) are applied to the health check.
+    if (httpd_objset *vs_os = vs->getObjset()) {
+        for (int i = 0; i < vs_os->pos; i++) {
+            httpd_object *vobj = vs_os->obj[i];
+            if (!vobj)
+                continue;
+            PRBool has_gateway = PR_FALSE;
+            dtable *rt = &vobj->dt[NSAPIRoute];
+            for (int d = 0; d < rt->ni && !has_gateway; d++) {
+                RouteConfig *rc = get_route_config(rt->inst[d].param.pb);
+                if (rc) {
+                    for (int g = 0; g < rc->num_gateways; g++) {
+                        if (rc->gateways[g] == gateway) {
+                            has_gateway = PR_TRUE;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (has_gateway) {
+                PRBool already_present = PR_FALSE;
+                for (int j = 0; j < rq->os->pos; j++) {
+                    if (rq->os->obj[j] == vobj) {
+                        already_present = PR_TRUE;
+                        break;
+                    }
+                }
+                if (!already_present)
+                    objset_add_object(vobj, rq->os);
+            }
+        }
+    }
+
     servact_pathchecks(sn, rq);
     servact_fileinfo(sn, rq);
+
+    // Ensure rq->vars["path"] and rq->vars["escaped"] hold the canonical
+    // gateway URL rather than a local document-root path produced by the
+    // default object's NameTrans fallback, and clear any pre-Service status
+    // code left by PathCheck/NameTrans on the synthetic probe request.
+    pblock_kvreplace(pb_key_path, gateway->url, gateway->url_len, rq->vars);
+    pblock_kvreplace(pb_key_escaped, gateway->url, gateway->url_len, rq->vars);
+    rq->status_num = 0;
 
     // Force service-http not to retry
     httpclient_set_retries(sn, rq, 0);
@@ -1078,6 +1158,7 @@ static void check_http_server(const VirtualServer *vs, Gateway *gateway)
                       "received invalid HTTP response code %d from server %s",
                       rq->status_num, gateway->addr);
         } else if (rq->status_num == PROTOCOL_BAD_GATEWAY ||
+                   rq->status_num == PROTOCOL_GATEWAY_TIMEOUT ||
                    rq->status_num == PROTOCOL_REQUEST_TIMEOUT)
         {
             log_error(LOG_VERBOSE, CHECK_HTTP_SERVER, sn, rq,
@@ -1176,42 +1257,52 @@ static void check_offline_http_server(Gateway *gateway)
 
 extern "C" void route_offline_thread(void *arg)
 {
-    // XXX make interval configurable
-    PRIntervalTime offline_check_interval = PR_SecondsToInterval(30);
-
-    time_t prev_set_http_server_time = (time_t) -1;
-
-    for (;;) {
+    while (!WebServer::isTerminating()) {
         PRIntervalTime epoch = ft_timeIntervalNow();
 
-        if (prev_set_http_server_time != _set_http_server_time) {
-            prev_set_http_server_time = _set_http_server_time;
+        for (int i = 0; i < GATEWAY_URL_HT_SIZE; i++) {
+            Gateway *gateway;
 
-            for (int i = 0; i < GATEWAY_URL_HT_SIZE; i++) {
-                Gateway *gateway;
+            PR_Lock(_gateway_url_ht[i].lock);
+            gateway = _gateway_url_ht[i].head;
+            PR_Unlock(_gateway_url_ht[i].lock);
+
+            while (gateway) {
+                if (gateway->offline_vsid)
+                    check_offline_http_server(gateway);
+
+                if (WebServer::isTerminating())
+                    break;
 
                 PR_Lock(_gateway_url_ht[i].lock);
-                gateway = _gateway_url_ht[i].head;
+                gateway = gateway->next;
                 PR_Unlock(_gateway_url_ht[i].lock);
-
-                while (gateway) {
-                    if (gateway->offline_vsid)
-                        check_offline_http_server(gateway);
-
-                    if (WebServer::isTerminating())
-                        break;
-
-                    PR_Lock(_gateway_url_ht[i].lock);
-                    gateway = gateway->next;
-                    PR_Unlock(_gateway_url_ht[i].lock);
-                }
             }
+
+            if (WebServer::isTerminating())
+                break;
         }
 
-        PRIntervalTime elapsed = (ft_timeIntervalNow() - epoch);
-        if (elapsed < offline_check_interval) {
+        while (!WebServer::isTerminating()) {
+            PRIntervalTime offline_check_interval = _offline_check_interval;
+            if (offline_check_interval == PR_INTERVAL_NO_WAIT ||
+                offline_check_interval == PR_INTERVAL_NO_TIMEOUT)
+            {
+                offline_check_interval = PR_SecondsToInterval(30);
+            }
+
+            PRIntervalTime elapsed = (ft_timeIntervalNow() - epoch);
+            if (elapsed >= offline_check_interval)
+                break;
+
             PRIntervalTime remaining = offline_check_interval - elapsed;
-            systhread_sleep(PR_IntervalToMilliseconds(remaining));
+            PRIntervalTime step = PR_MillisecondsToInterval(200);
+            if (step > remaining)
+                step = remaining;
+            PRUint32 ms = PR_IntervalToMilliseconds(step);
+            if (ms < 1)
+                ms = 1;
+            systhread_sleep(ms);
         }
     }
 }
