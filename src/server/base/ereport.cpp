@@ -211,8 +211,12 @@ static inline int _ereport_vsprintf(const VirtualServer* vs, char* str, int strL
     }
 
     pos += util_vsnprintf(&str[pos], strLen - pos - 1, fmt, args);
+    if (pos > strLen - 1)
+        pos = strLen - 1;
 
     pos += util_snprintf(&str[pos], strLen - pos, ENDLINE);
+    if (pos > strLen - 1)
+        pos = strLen - 1;
 
     return pos;
 }

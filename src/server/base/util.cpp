@@ -979,26 +979,38 @@ NSAPI_PUBLIC int util_i64toa(PRInt64 i, char *a)
 NSAPI_PUBLIC int util_vsnprintf(char *s, int n, register const char *fmt, 
                                 va_list args)
 {
-    return PR_vsnprintf(s, n, fmt, args);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int rv = PR_vsnprintf(s, n, fmt, args_copy);
+    va_end(args_copy);
+    return rv;
 }
 
 NSAPI_PUBLIC int util_snprintf(char *s, int n, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    return PR_vsnprintf(s, n, fmt, args);
+    int rv = PR_vsnprintf(s, n, fmt, args);
+    va_end(args);
+    return rv;
 }
 
 NSAPI_PUBLIC int util_vsprintf(char *s, register const char *fmt, va_list args)
 {
-    return PR_vsnprintf(s, UTIL_PRF_MAXSIZE, fmt, args);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int rv = PR_vsnprintf(s, UTIL_PRF_MAXSIZE, fmt, args_copy);
+    va_end(args_copy);
+    return rv;
 }
 
 NSAPI_PUBLIC int util_sprintf(char *s, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    return PR_vsnprintf(s, UTIL_PRF_MAXSIZE, fmt, args);
+    int rv = PR_vsnprintf(s, UTIL_PRF_MAXSIZE, fmt, args);
+    va_end(args);
+    return rv;
 }
 
 /* ---------------------------- util_sh_escape ---------------------------- */

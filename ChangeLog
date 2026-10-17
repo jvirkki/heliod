@@ -51,25 +51,50 @@
             OfflineCheckInterval in magnus.conf, or offline-check-interval on
             set-origin-server / set-proxy-server.
 
+        * Bug fix: harden 64-bit va_list handling and buffer bounds across
+          NSAPI error logging and formatting APIs (log_error_v, ereport_v,
+          util_vsnprintf, util_vsprintf, and NsprError).
+
+            Under the 32-bit x86 and SPARC ABIs this codebase was originally
+            written for, va_list was a scalar pointer passed by value, so
+            passing a va_list to util_vsnprintf(), util_vsprintf(), or
+            log_error_v() left the caller's va_list intact for subsequent
+            formatting or logging calls.  Under the 64-bit System V AMD64 ABI,
+            va_list is a 1-element struct array (struct __va_list_tag[1]) that
+            decays to a pointer, so PR_vsnprintf() mutates the caller's
+            va_list register/stack offsets in place and any second use by the
+            server or a third-party NSAPI SAF reads garbage off the stack and
+            crashes with SIGSEGV.  util_vsnprintf(), util_vsprintf()
+            (src/server/base/util.cpp), and log_error_v()
+            (src/server/frame/log.cpp) now format against a va_copy() of the
+            incoming va_list so callers' va_list state is never clobbered,
+            and util_snprintf() / util_sprintf() now pair va_start() with
+            va_end().  Also fixes _setErrorv() in
+            src/support/NsprWrap/NsprError.cpp, which previously passed an
+            already-consumed va_list to variadic PR_smprintf(fmt, args)
+            instead of PR_vsmprintf() with a va_copy() when formatting error
+            messages longer than 255 bytes, and hardens log_error_v() and
+            _ereport_vsprintf() (src/server/base/ereport.cpp) against NULL
+            Session / Request / client-IP pointers and buffer truncation
+            overflow.
+
         * Bug fix: fix crash in reverse-proxy error logging and error page
           generation (Oracle 6981086).
 
             agent_error() in src/server/libproxy/proxyerror.cpp previously
-            passed the same va_list (args) to PR_vsnprintf() and then to
-            log_error_v().  On 64-bit System V AMD64 ABI, PR_vsnprintf()
-            mutates the caller's va_list state in place, so the subsequent
-            log_error_v() / util_vsnprintf() read past the end of the consumed
-            argument list and dereferenced garbage stack pointers whenever
-            degree (e.g. LOG_FAILURE) was enabled.  agent_error() now logs the
+            formatted the proxy error description into msg with
+            PR_vsnprintf(msg, MAX_MSG_LEN, fmt, args) and then called
+            log_error_v(degree, fn, sn, rq, fmt, args) with the already-
+            consumed va_list, crashing on 64-bit x86_64 whenever degree (such
+            as LOG_FAILURE) was active.  agent_error() now logs the
             already-formatted msg buffer via log_error(..., "%s", msg).
             Also removes the #ifdef FEAT_PROXY guard that stubbed out
             proxyerror_magnus_internal_send_proxy_error() in standard builds,
             registers service-gateway-dump and service-channel-dump in
             src/server/frame/httpd-fn.cpp, HTML-escapes host in the
             PR_CONNECT_REFUSED_ERROR branch of proxyerror_channel_error(), and
-            guards proxyerror.cpp, channel.cpp, and log_error_v() in
-            src/server/frame/log.cpp against NULL Session/Request pointers and
-            buffer truncation overflow.
+            guards proxyerror.cpp and channel.cpp against NULL Session/Request
+            pointers.
 
 2026-10-15  Joe McCabe <joe@jmccabe.org>
 

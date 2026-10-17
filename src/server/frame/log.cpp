@@ -118,7 +118,10 @@ NSAPI_PUBLIC int log_error_v(int degree, const char *func,
     }
 
     if(fmt && pos < max_pos) {
-        pos += util_vsnprintf(&errstr[pos], sizeof(errstr) - pos, fmt, args);
+        va_list args_copy;
+        va_copy(args_copy, args);
+        pos += util_vsnprintf(&errstr[pos], sizeof(errstr) - pos, fmt, args_copy);
+        va_end(args_copy);
         if(pos > max_pos)
             pos = max_pos;
     }

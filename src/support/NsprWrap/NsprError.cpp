@@ -178,17 +178,22 @@ static inline void _setErrorv(PRErrorCode prError, PRInt32 err, const char *fmt,
 {
     char buf[ERRBUFSIZ];
     int len;
+    va_list args_copy;
+    va_copy(args_copy, args);
 
     len = PR_vsnprintf(buf, sizeof(buf), fmt, args);
-    if (len < sizeof(buf) - 1) {
+    if (len >= 0 && len < (int)sizeof(buf) - 1) {
         // Formatted string fit on the stack
         _setError(prError, err, buf, len);
     } else {
         // Formatted string was too big for the stack
-        char *msg = PR_smprintf(fmt, args);
+        char *msg = PR_vsmprintf(fmt, args_copy);
         _setError(prError, err, msg, msg ? strlen(msg) : 0);
-        PR_Free(msg);
+        if (msg)
+            PR_smprintf_free(msg);
     }
+
+    va_end(args_copy);
 }
 
 //-----------------------------------------------------------------------------
