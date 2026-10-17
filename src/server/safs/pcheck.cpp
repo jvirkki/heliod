@@ -849,7 +849,8 @@ int pcheck_ssl_check(pblock *pb, Session *sn, Request *rq)
                 }
                 protocol_status(sn, rq, PROTOCOL_FORBIDDEN, NULL);
                 rv = REQ_ABORTED;
-                SSL_INVALIDATESESSION(sn->csd);
+                if (conf_get_true_globals()->Vssl_cache_entries > 0)
+                    SSL_INVALIDATESESSION(sn->csd);
             }
         }
     }
@@ -861,7 +862,8 @@ int pcheck_ssl_check(pblock *pb, Session *sn, Request *rq)
 int pcheck_ssl_logout(pblock *pb, Session *sn, Request *rq)
 {
     if (GetSecurity(sn)) {
-        SSL_INVALIDATESESSION(sn->csd);
+        if (conf_get_true_globals()->Vssl_cache_entries > 0)
+            SSL_INVALIDATESESSION(sn->csd);
         return REQ_PROCEED;
     }
 

@@ -197,16 +197,18 @@ NSAPI_PUBLIC void INTsession_fill_ssl(Session *sn)
 
                 iditem = SSL_GetSessionID(sn->csd);
                 if (iditem) {
-                    /* Convert to base64 ASCII encoding */
-                    idstr = BTOA_DataToAscii(iditem->data, iditem->len);
-                    if (idstr) {
-                        /* Add encoding to client pblock */
-                        pblock_kvinsert(pb_key_ssl_id, idstr, strlen(idstr), sn->client);
+                    if (iditem->data && iditem->len > 0) {
+                        /* Convert to base64 ASCII encoding */
+                        idstr = BTOA_DataToAscii(iditem->data, iditem->len);
+                        if (idstr) {
+                            /* Add encoding to client pblock */
+                            pblock_kvinsert(pb_key_ssl_id, idstr, strlen(idstr), sn->client);
+                            PORT_Free(idstr);
+                        }
                     }
 
-                    /* Free the encoding buffer (pblock_nvinsert dups it) */
+                    /* Free the session ID item */
                     SECITEM_FreeItem(iditem, PR_TRUE);
-                    PR_Free(idstr);
                 }
             }
             if (cipher) PORT_Free (cipher);

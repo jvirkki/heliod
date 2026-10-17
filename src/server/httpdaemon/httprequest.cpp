@@ -71,6 +71,8 @@
 #include "base64.h"
 
 #include "httpdaemon/vsconf.h"            // VirtualServer class
+#include "httpdaemon/H2StreamSocket.h"
+#include "httpdaemon/H2Stream.h"
 
 #ifndef in_addr_t
 #define in_addr_t unsigned int
@@ -969,7 +971,14 @@ void HttpRequest::UnacceleratedRespond()
 
     pblock_kvinsert(pb_key_ip, clientIP, strlen(clientIP), rqSn.sn.client);
 
-    INTsession_fill_ssl(&rqSn.sn);
+    Connection *protoConn = GetDaemonSession().conn;
+    if (protoConn && protoConn->fHttp2 && fSSLEnabled) {
+        heliod::H2Stream *h2s = heliod::H2StreamSocket::fromFD(rqSn.sn.csd);
+        if (h2s)
+            h2s->fillSSLSession(&rqSn.sn);
+    } else {
+        INTsession_fill_ssl(&rqSn.sn);
+    }
 
     /* Check the security  - side effect: cla->cla_cert may get set */
     if (servssl_check_session(&rqSn.sn) != PR_SUCCESS) {
@@ -1002,7 +1011,6 @@ void HttpRequest::UnacceleratedRespond()
     PR_ASSERT(rqRq.rq.method_num != -1 || iStatus);
 
     /* Pass protocol as "protocol" in reqpb, and also in protv_num */
-    Connection *protoConn = GetDaemonSession().conn;
     if (protoConn && protoConn->fHttp2) {
         // An HTTP/2 stream is dispatched as a synthetic HTTP/1.1 request, so its
         // request line says HTTP/1.1 and protv_num says the same -- which is what

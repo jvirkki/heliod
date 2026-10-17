@@ -672,7 +672,7 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
         stat = SSL_OptionSet(sock, SSL_ROLLBACK_DETECTION, PR_FALSE);
 
     ereport(LOG_VERBOSE, "%d export ciphers enabled", export_ciphers);
-    if (export_ciphers == 0) {
+    if ((stat == SECSuccess) && (export_ciphers == 0)) {
         // By default an RSA step-down key is generated for every SSL
         // socket but this is only needed if export ciphers are
         // enabled, which is very rarely going to be true. Generating
@@ -696,17 +696,19 @@ void SSLSocketConfiguration :: enableSSL(PRFileDesc* sock,
     // If the configuration wants bypass AND the keypairs live in
     // tokens which can allow bypass, do it, otherwise don't.
 
-    if (pkcs11.allowBypass) {
-        if (check_bypass() == PR_TRUE) {
-            ereport(LOG_VERBOSE, "PKCS#11 bypass is enabled");
-            stat = SSL_OptionSet(sock, SSL_BYPASS_PKCS11, PR_TRUE);
+    if (stat == SECSuccess) {
+        if (pkcs11.allowBypass) {
+            if (check_bypass() == PR_TRUE) {
+                ereport(LOG_VERBOSE, "PKCS#11 bypass is enabled");
+                stat = SSL_OptionSet(sock, SSL_BYPASS_PKCS11, PR_TRUE);
+            } else {
+                ereport(LOG_SECURITY, XP_GetAdminStr(DBT_cannotBypass));
+                stat = SSL_OptionSet(sock, SSL_BYPASS_PKCS11, PR_FALSE);
+            }
         } else {
-            ereport(LOG_SECURITY, XP_GetAdminStr(DBT_cannotBypass));
             stat = SSL_OptionSet(sock, SSL_BYPASS_PKCS11, PR_FALSE);
+            ereport(LOG_VERBOSE, "PKCS#11 bypass is disabled");
         }
-    } else {
-        stat = SSL_OptionSet(sock, SSL_BYPASS_PKCS11, PR_FALSE);
-        ereport(LOG_VERBOSE, "PKCS#11 bypass is disabled");
     }
 
     int i;

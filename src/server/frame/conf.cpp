@@ -172,8 +172,8 @@ NSAPI_PUBLIC void conf_init_true_globals(const ServerXMLSchema::Server& server)
 
     // Initialize SSL-specific variables
     if (httpListener && httpListener->ssl.enabled) {
-        vars.Vssl3_active = httpListener->ssl.ssl2;
-        vars.Vssl2_active = httpListener->ssl.ssl3;
+        vars.Vssl3_active = (httpListener->ssl.ssl3 || httpListener->ssl.tls);
+        vars.Vssl2_active = httpListener->ssl.ssl2;
         vars.Vsecure_auth = (httpListener->ssl.clientAuth != httpListener->ssl.clientAuth.CLIENTAUTH_FALSE);
     }
 
@@ -349,8 +349,8 @@ NSAPI_PUBLIC conf_global_vars_s *INTconf_getglobals(void)
 
         const SSLSocketConfiguration* sslc = ds.conn->sslconfig;
         if (sslc) {
-            vars.Vssl3_active = sslc->ssl2;
-            vars.Vssl2_active = sslc->ssl3;
+            vars.Vssl3_active = (sslc->ssl3 || sslc->tls);
+            vars.Vssl2_active = sslc->ssl2;
             vars.Vsecure_auth = (sslc->clientAuth != sslc->clientAuth.CLIENTAUTH_FALSE);
         }
     }

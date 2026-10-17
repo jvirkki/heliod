@@ -60,6 +60,11 @@ public:
      */
     static PRFileDesc* create(H2Stream* stream);
 
+    /**
+     * Locate the H2Stream (if any) backing the given NSPR descriptor stack.
+     */
+    static H2Stream* fromFD(PRFileDesc* fd);
+
 private:
     static PRDescIdentity identity_;
     static PRIOMethods methods_;

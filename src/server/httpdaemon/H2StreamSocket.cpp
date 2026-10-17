@@ -575,4 +575,16 @@ PRFileDesc* H2StreamSocket::create(H2Stream* stream)
     return fd;
 }
 
+H2Stream* H2StreamSocket::fromFD(PRFileDesc* fd)
+{
+    if (!initialized_ || !fd)
+        return NULL;
+
+    PRFileDesc* layer = PR_GetIdentitiesLayer(fd, identity_);
+    if (!layer)
+        return NULL;
+
+    return reinterpret_cast<H2Stream*>(layer->secret);
+}
+
 } // namespace heliod

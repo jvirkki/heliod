@@ -40,6 +40,9 @@
 #include "httpdaemon/EventLoop.h"
 #include "httpdaemon/EventDispatcher.h"
 #include "frame/conf.h"                 // conf_getboundedinteger()
+#include "base/pblock.h"
+#include "libaccess/nsauth.h"
+#include "base64.h"
 
 #include <nghttp2/nghttp2.h>
 
@@ -400,7 +403,9 @@ H2Session::H2Session(Connection* conn)
       peerClosed_(PR_FALSE),
       streamsOpened_(0), maxStreamsReached_(PR_FALSE),
       inFlight_(0), driving_(PR_FALSE), wantClose_(PR_FALSE),
-      parked_(PR_FALSE), redrive_(PR_FALSE), driver_(NULL)
+      parked_(PR_FALSE), redrive_(PR_FALSE), driver_(NULL),
+      tlsSecOn_(PR_FALSE), tlsKeySize_(0), tlsSecretKeySize_(0),
+      tlsPeerCert_(NULL)
 {
     memset(preface_, 0, sizeof(preface_));
     XP_InitLock(&lock_);
@@ -440,6 +445,11 @@ H2Session::~H2Session()
         nghttp2_session_callbacks_del(
             static_cast<nghttp2_session_callbacks*>(callbacks_));
         callbacks_ = NULL;
+    }
+
+    if (tlsPeerCert_) {
+        CERT_DestroyCertificate(tlsPeerCert_);
+        tlsPeerCert_ = NULL;
     }
 
     // Last, because nghttp2_session_del() above fires the stream-close callback
@@ -503,7 +513,80 @@ PRStatus H2Session::init()
 
     session_ = s;
     initialized_ = PR_TRUE;
+
+    if (connection_ && connection_->fSSLEnabled && connection_->fd) {
+        PRInt32 secon = -1;
+        PRInt32 keySize = 0;
+        PRInt32 secretKeySize = 0;
+        char* cipher = NULL;
+        char* issuerDn = NULL;
+        char* userDn = NULL;
+        if (SSL_SecurityStatus(connection_->fd, &secon, &cipher, &keySize,
+                               &secretKeySize, &issuerDn, &userDn) == SECSuccess &&
+            secon > 0)
+        {
+            tlsSecOn_ = PR_TRUE;
+            tlsKeySize_ = keySize;
+            tlsSecretKeySize_ = secretKeySize;
+            if (cipher)
+                tlsCipher_.assign(cipher);
+            if (issuerDn)
+                tlsIssuerDn_.assign(issuerDn);
+            if (userDn)
+                tlsUserDn_.assign(userDn);
+
+            SECItem* iditem = SSL_GetSessionID(connection_->fd);
+            if (iditem) {
+                if (iditem->data && iditem->len > 0) {
+                    char* idstr = BTOA_DataToAscii(iditem->data, iditem->len);
+                    if (idstr) {
+                        tlsSessionId_.assign(idstr);
+                        PORT_Free(idstr);
+                    }
+                }
+                SECITEM_FreeItem(iditem, PR_TRUE);
+            }
+        }
+        if (cipher)
+            PORT_Free(cipher);
+        if (issuerDn)
+            PORT_Free(issuerDn);
+        if (userDn)
+            PORT_Free(userDn);
+
+        tlsPeerCert_ = SSL_PeerCertificate(connection_->fd);
+    }
+
     return PR_SUCCESS;
+}
+
+void H2Session::fillSSLSession(Session* sn) const
+{
+    if (!sn)
+        return;
+
+    if (tlsSecOn_ && sn->client) {
+        sn->ssl = 1;
+        pblock_kvinsert(pb_key_cipher, tlsCipher_.c_str(),
+                        static_cast<int>(tlsCipher_.size()), sn->client);
+        pblock_kninsert(pb_key_keysize, tlsKeySize_, sn->client);
+        pblock_kninsert(pb_key_secret_keysize, tlsSecretKeySize_, sn->client);
+        pblock_kvinsert(pb_key_issuer_dn, tlsIssuerDn_.c_str(),
+                        static_cast<int>(tlsIssuerDn_.size()), sn->client);
+        pblock_kvinsert(pb_key_user_dn, tlsUserDn_.c_str(),
+                        static_cast<int>(tlsUserDn_.size()), sn->client);
+        if (!tlsSessionId_.empty()) {
+            pblock_kvinsert(pb_key_ssl_id, tlsSessionId_.c_str(),
+                            static_cast<int>(tlsSessionId_.size()), sn->client);
+        }
+    }
+
+    if (tlsPeerCert_ && sn->clauth) {
+        ClAuth_t* cla = static_cast<ClAuth_t*>(sn->clauth);
+        if (cla->cla_cert)
+            CERT_DestroyCertificate(cla->cla_cert);
+        cla->cla_cert = CERT_DupCertificate(tlsPeerCert_);
+    }
 }
 
 void H2Session::discard(Connection* conn)

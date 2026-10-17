@@ -1,3 +1,58 @@
+2026-10-17  Joe McCabe <joe@jmccabe.org>
+
+        * Bug fix: harden SSL/TLS session-cache-disabled mode and expired
+          client-certificate handling against uninitialized-cache and stale
+          peer-certificate hazards (Oracle 13725520, 16834733).
+
+            When <ssl-session-cache><enabled>false</enabled></ssl-session-cache>
+            is configured in server.xml, servssl_init_early() and
+            servssl_init_late() skip SSL_ConfigMPServerSIDCache() and
+            SSL_ConfigServerSessionIDCache(), leaving NSS's globalCache
+            uninitialized.  servssl_init_late() in src/server/base/servnss.cpp
+            now sets SSL_OptionSetDefault(SSL_NO_CACHE, PR_TRUE) whenever
+            Vssl_cache_entries == 0, SSLSocketConfiguration::enableSSL() in
+            src/server/base/sslconf.cpp preserves prior SSL_OptionSet() failure
+            statuses across SSL_NO_STEP_DOWN and SSL_BYPASS_PKCS11 calls, and
+            servssl_check_session(), get_auth_user_ssl(), pcheck_ssl_check(),
+            and pcheck_ssl_logout() only invoke SSL_InvalidateSession() when
+            Vssl_cache_entries > 0.  INTsession_fill_ssl() in
+            src/server/base/session.cpp and auth_get_sslid() in
+            src/server/safs/auth.cpp now guard BTOA_DataToAscii() against
+            0-length session IDs (which otherwise set SEC_ERROR_INVALID_ARGS in
+            thread-local NSPR error state).  In src/server/safs/clauth.cpp,
+            when an on-demand client-certificate handshake (ca_GetClientCert())
+            fails (such as when a client presents an expired certificate, where
+            NSS populates ss->sec.peerCert before ssl3_AuthCertificate()
+            rejects the certificate), the session is marked failed and
+            keep-alive is disabled so subsequent CA_GetClientCert() calls on
+            the same request cannot accept the unverified certificate.
+
+        * Bug fix / enhancement: enable client-certificate authentication on
+          TLS-only listeners (<ssl3>false</ssl3>), support TLS 1.3
+          post-handshake client authentication (dorequest="1"), and propagate
+          TLS session and peer-certificate state to HTTP/2 streams
+          (Oracle 19885785, 23590236).
+
+            CA_getcert() and ca_GetClientCert() in src/server/safs/clauth.cpp
+            previously gated PathCheck fn="get-client-cert" (and ACL
+            get_user_cert_ssl()) on sslc->ssl3, rejecting client-certificate
+            authentication with HTTP4034 whenever <ssl3>false</ssl3> was
+            configured on a TLS 1.2/1.3 listener.  Both functions now accept
+            listeners with either sslc->ssl3 or sslc->tls enabled, and
+            conf_init_true_globals() / conf_get_globals() in
+            src/server/frame/conf.cpp now set Vssl3_active from
+            (ssl3 || tls) and Vssl2_active from ssl2.  For on-demand
+            dorequest="1" requests in ca_GetClientCert(), TLS 1.3 connections
+            now use NSS post-handshake authentication via
+            SSL_SendCertificateRequest() while TLS 1.2 connections continue to
+            use SSL_ReHandshakeWithTimeout(), and HTTP/2 streams reject
+            mid-connection renegotiation per RFC 9113 section 9.2.1.  For
+            HTTP/2 over TLS, H2Session::init() captures the negotiated cipher,
+            key sizes, session ID, and peer certificate from the underlying TLS
+            socket and H2Stream::fillSSLSession() populates rqSn.sn.client and
+            cla->cla_cert on each dispatched stream so <client-auth> and
+            get-client-cert work over HTTP/2.
+
 2026-10-16  Joe McCabe <joe@jmccabe.org>
 
         * Bug fix: harden outbound reverse-proxy TLS channel, fix TLS 1.2/1.3

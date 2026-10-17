@@ -48,10 +48,18 @@ and HTTP/2:
 - `event_smoke.sh <work-root>` — event-driven HTTP/1.1 parity tests
   (keep-alive, pipelining, 100-continue, chunked, slow client, slowloris,
   concurrency, TLS, idle connections).  Reuses `https-test`.
-- `tls_smoke.sh <work-root>` — TLS version and ALPN checks, including the
-  classic-model ALPN regression check (default `io-model` listener advertises
-  only `http/1.1` when the client offers `h2,http/1.1` and answers `GET /` with
-  200).  Reuses `https-test`.
+- `tls_smoke.sh <work-root>` — TLS version, ALPN, session-cache, and
+  client-certificate authentication checks across both
+  `<ssl-session-cache><enabled>true</enabled>` and
+  `<enabled>false</enabled>`, including the classic-model ALPN regression check
+  (default `io-model` listener advertises only `http/1.1` when the client offers
+  `h2,http/1.1` and answers `GET /` with 200), `<ssl3>false</ssl3>` TLS-only
+  client-certificate authentication (`<client-auth>optional</client-auth>` with
+  `PathCheck fn="get-client-cert"` and `<client-auth>required</client-auth>`)
+  with valid, missing, and expired client certificates over TLS 1.2, TLS 1.3,
+  and HTTP/2 (`h2`), and on-demand `dorequest="1"` client-certificate requests
+  over TLS 1.2 (renegotiation) and TLS 1.3 (post-handshake authentication).
+  Reuses `https-test`.
 - `h2_smoke.sh <work-root>` — HTTP/2 ALPN negotiation on an `io-model=event`
   listener (`h2` selected) alongside a default-`io-model` listener (`http/1.1`
   selected even when `h2` is offered), plus HTTP/2 settings, NSAPI request

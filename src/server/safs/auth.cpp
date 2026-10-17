@@ -846,15 +846,17 @@ auth_get_sslid(pblock *param, Session *sn, Request *rq)
     if ((iditem = SSL_GetSessionID(sn->csd)) == NULL)
         return REQ_NOACTION;
 
-    /* Convert to base64 ASCII encoding */
-    idstr = BTOA_DataToAscii(iditem->data, iditem->len);
-    if (idstr) {
+    if (iditem->data && iditem->len > 0) {
+        /* Convert to base64 ASCII encoding */
+        idstr = BTOA_DataToAscii(iditem->data, iditem->len);
+        if (idstr) {
 
-        /* Add encoding to client pblock */
-        pblock_nvinsert("ssl-id", idstr, sn->client);
+            /* Add encoding to client pblock */
+            pblock_nvinsert("ssl-id", idstr, sn->client);
 
-        /* Free the encoding buffer (pblock_nvinsert dups it) */
-        PORT_Free(idstr);
+            /* Free the encoding buffer (pblock_nvinsert dups it) */
+            PORT_Free(idstr);
+        }
     }
 
     SECITEM_FreeItem(iditem, PR_TRUE);

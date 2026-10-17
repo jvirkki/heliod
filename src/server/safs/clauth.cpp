@@ -43,6 +43,7 @@
 #endif
 #include "cert.h"
 #include "ssl.h"
+#include "sslexp.h"
 #include "sslerr.h"
 #include "secerr.h"
 #include "base64.h"
@@ -107,10 +108,21 @@ NSAPI_PUBLIC int
 CA_GetClientCert(pblock *pb, Session *sn, Request *rq)
 {
     ClAuth_t *cla = (ClAuth_t*)sn->clauth;
+    if (sn->client && pblock_findval("clauth-handshake-failed", sn->client)) {
+        if (cla->cla_cert != NULL) {
+            CERT_DestroyCertificate(cla->cla_cert);
+            cla->cla_cert = NULL;
+        }
+        return REQ_ABORTED;
+    }
     CERTCertificate *cert = SSL_PeerCertificate(sn->csd);
-    if (cla->cla_cert != NULL)
-    	CERT_DestroyCertificate(cla->cla_cert);
-    cla->cla_cert = cert;
+    if (cert != NULL) {
+        if (cla->cla_cert != NULL)
+            CERT_DestroyCertificate(cla->cla_cert);
+        cla->cla_cert = cert;
+    } else {
+        cert = cla->cla_cert;
+    }
     return (cert == NULL) ? REQ_ABORTED : REQ_PROCEED; 
 }
 
@@ -211,29 +223,55 @@ ca_GetClientCert(Session* sn, Request* rq)
     if (hrq) {
         const DaemonSession &dsn = hrq->GetDaemonSession();
         ioTimeout = dsn.GetIOTimeout();
+        if (dsn.conn && dsn.conn->fHttp2) {
+            log_error(LOG_FAILURE, CA_PROGRAM, sn, rq,
+                      XP_GetAdminStr(DBT_clauthError8),
+                      "renegotiation and post-handshake authentication are not permitted over HTTP/2");
+            return REQ_ABORTED;
+        }
     }
 
-    // Set up the machinery to redo the handshake. We set an handshake callback
-    // that will notify us when the handshake has completed, set the options to
-    // request, but not require a certificate, then tell SSL to do an handshake
-    // on occasion.
+    SSLChannelInfo channel;
+    PRBool isTLS13PostHandshake = PR_FALSE;
+    if (SSL_GetChannelInfo(csd, &channel, sizeof(channel)) == SECSuccess &&
+        channel.length == sizeof(channel) &&
+        channel.protocolVersion >= SSL_LIBRARY_VERSION_TLS_1_3)
+    {
+        isTLS13PostHandshake = PR_TRUE;
+    }
+
+    // Set up the machinery to redo the handshake (TLS 1.2) or request a
+    // post-handshake client certificate (TLS 1.3). We set a handshake callback
+    // that will notify us when a TLS 1.2 renegotiation has completed, set the
+    // options to request, but not require a certificate, then initiate the
+    // certificate request.
     // Do NOT call SSL_ResetHandshake as this will tear down the existing
     // connection.
-    if (SSL_HandshakeCallback(csd, ca_HandshakeDone, (void *)&handshake_done) ||
-        SSL_OptionSet(csd, SSL_REQUEST_CERTIFICATE, PR_TRUE) ||
-        SSL_OptionSet(csd, SSL_REQUIRE_CERTIFICATE, PR_FALSE) ||
-        SSL_ReHandshakeWithTimeout(csd, PR_TRUE, ioTimeout))
+    SECStatus hsInitStatus;
+    if (isTLS13PostHandshake) {
+        hsInitStatus = (SSL_OptionSet(csd, SSL_REQUEST_CERTIFICATE, PR_TRUE) == SECSuccess &&
+                        SSL_OptionSet(csd, SSL_REQUIRE_CERTIFICATE, PR_FALSE) == SECSuccess &&
+                        SSL_SendCertificateRequest(csd) == SECSuccess)
+                       ? SECSuccess : SECFailure;
+    } else {
+        hsInitStatus = (SSL_HandshakeCallback(csd, ca_HandshakeDone, (void *)&handshake_done) == SECSuccess &&
+                        SSL_OptionSet(csd, SSL_REQUEST_CERTIFICATE, PR_TRUE) == SECSuccess &&
+                        SSL_OptionSet(csd, SSL_REQUIRE_CERTIFICATE, PR_FALSE) == SECSuccess &&
+                        SSL_ReHandshakeWithTimeout(csd, PR_TRUE, ioTimeout) == SECSuccess)
+                       ? SECSuccess : SECFailure;
+    }
+    if (hsInitStatus != SECSuccess)
     {
         // something went wrong
 	int errCode = PR_GetError();
 	if (errCode == SEC_ERROR_INVALID_ARGS) {
-	    /* Treat this code specially - it means it's not an SSL3 socket */
-	    if (!sslc->ssl3) {
-		/* SSL3 is not enabled */
+	    /* Treat this code specially - it means it's not an SSL3/TLS socket */
+	    if (!sslc->ssl3 && !sslc->tls) {
+		/* SSL3/TLS is not enabled */
 		log_error(LOG_MISCONFIG, CA_PROGRAM, sn, rq, 
 		          XP_GetAdminStr(DBT_clauthError6));
 	    } else {
-		/* Client couldn't/wouldn't step up to SSL3 */
+		/* Client couldn't/wouldn't step up to SSL3/TLS */
 		log_error(LOG_FAILURE, CA_PROGRAM, sn, rq,
 		          XP_GetAdminStr(DBT_clauthError7));
 	    }
@@ -259,6 +297,9 @@ ca_GetClientCert(Session* sn, Request* rq)
             result = SSL_ForceHandshakeWithTimeout(csd, ioTimeout);
             if (result > 0)
                 result = 0;
+            if (result == 0 && isTLS13PostHandshake && !SSL_DataPending(csd)) {
+                handshake_done = 1;
+            }
         } else {
            /* data available to be read. */
 
@@ -384,6 +425,20 @@ ca_GetClientCert(Session* sn, Request* rq)
         rv = REQ_ABORTED;
     }
 
+    if (rv != REQ_PROCEED) {
+        ClAuth_t *cla = (ClAuth_t *)sn->clauth;
+        if (cla && cla->cla_cert != NULL) {
+            CERT_DestroyCertificate(cla->cla_cert);
+            cla->cla_cert = NULL;
+        }
+        if (sn->client) {
+            pblock_nvinsert("clauth-handshake-failed", "1", sn->client);
+        }
+        if (rq) {
+            KEEP_ALIVE(rq) = 0;
+        }
+    }
+
     return rv;
 }
 
@@ -479,7 +534,7 @@ CA_getcert(pblock *pb, Session *sn, Request *rq)
     }
 
     const SSLSocketConfiguration* sslc = GetSecurityParams(rq);
-    if (!sslc || !sslc->ssl3)
+    if (!GetSecurity(sn) || !sslc || (!sslc->ssl3 && !sslc->tls))
     {
 	log_error(LOG_MISCONFIG, CA_PROGRAM, sn, rq, 
 	          XP_GetAdminStr(DBT_clauthError16)); 
@@ -748,7 +803,8 @@ get_auth_user_ssl (NSErr_t *errp, PList_t subject,
 	    ereport(LOG_SECURITY, XP_GetAdminStr(DBT_clauthEreport14), rv);
 	    return LAS_EVAL_FAIL;
 	}
-	SSL_InvalidateSession(sn->csd);
+	if (conf_get_true_globals()->Vssl_cache_entries > 0)
+	    SSL_InvalidateSession(sn->csd);
 
         if (failed == 1) {
             // Return FAIL only if there was LDAP error.  By returning FALSE we

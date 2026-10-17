@@ -792,6 +792,12 @@ PRStatus H2Stream::getLocalAddress(PRNetAddr* addr) const
     return PR_SUCCESS;
 }
 
+void H2Stream::fillSSLSession(Session* sn) const
+{
+    if (session_ && sn)
+        session_->fillSSLSession(sn);
+}
+
 PRStatus H2Stream::buildHttp11Request(std::string& out)
 {
     if (method_.empty() || path_.empty())

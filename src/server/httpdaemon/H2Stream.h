@@ -138,6 +138,12 @@ public:
     PRStatus getLocalAddress(PRNetAddr* addr) const;
 
     /**
+     * Populate an NSAPI Session's TLS client pblock entries and peer
+     * certificate from the owning H2Session.
+     */
+    void fillSSLSession(Session* sn) const;
+
+    /**
      * Build a synthetic HTTP/1.1 request and run the SAF pipeline against it.
      * The response is captured through writeResponseBody() as it is produced, so
      * this may block waiting for the client to keep up.  Returns PR_SUCCESS if

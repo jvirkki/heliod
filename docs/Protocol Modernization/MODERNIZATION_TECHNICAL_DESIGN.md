@@ -196,6 +196,37 @@ Connection
   both NSS-coupled; a partial migration (e.g. OpenSSL for new listeners, NSS for
   legacy) is possible but adds long-term maintenance surface. Recommend a clean
   full-migration decision rather than dual-stack SSL, if OpenSSL is chosen at all.
+- **NSS 3.x runtime quirks that the TLS glue must guard against while on NSS**:
+  - *Unverified `ss->sec.peerCert` after failed client-certificate verification*:
+    `ssl3_CompleteHandleCertificate()` and `tls13_HandleCertificate()` populate
+    `ss->sec.peerCert` before calling `ssl3_AuthCertificate()` and do not clear it
+    on verification failure, while `SSL_PeerCertificate()` returns `ss->sec.peerCert`
+    without checking verification status. On-demand client-auth (`clauth.cpp`) must
+    explicitly poison the session on handshake failure so a subsequent
+    `CA_GetClientCert()` call cannot accept an expired or untrusted certificate.
+  - *Uninitialized `globalCache` division-by-zero when the SSL session cache is
+    disabled*: `ssl_ServerUncacheSessionID()` / `SIDindex()` divides by
+    `globalCache.numSIDCacheSets` (`SIGFPE`) without checking whether the server
+    session cache was initialized, relying on `SSL_NO_CACHE` (`ss->opt.noCache`) to
+    short-circuit `ssl_UncacheSessionID()`. `servssl_init_late()` must set
+    `SSL_OptionSetDefault(SSL_NO_CACHE, PR_TRUE)` whenever `Vssl_cache_entries == 0`,
+    and `SSL_InvalidateSession()` calls must be skipped when the cache is disabled.
+  - *TLS 1.3 post-handshake client authentication (`SSL_SendCertificateRequest`)*:
+    `tls13_HandlePostHelloHandshakeMessage()` transitions back to `idle_handshake`
+    without invoking `SSL_HandshakeCallback` when `ss->firstHsDone != 0`, so
+    `ca_GetClientCert()` must detect completion when
+    `SSL_ForceHandshakeWithTimeout()` succeeds and `!SSL_DataPending()`.
+  - *Zero-length `SECItem` from `SSL_GetSessionID()`*: when `ssl3_NewSessionID(ss, PR_FALSE)`
+    is used, `SSL_GetSessionID()` returns a non-`NULL` `SECItem*` with `len == 0`,
+    which causes `BTOA_DataToAscii()` (`NSSBase64_EncodeItem_Util`) to fail and set
+    `SEC_ERROR_INVALID_ARGS` in `PR_GetError()`.
+  - *Non-thread-safe `ss->fd` mutation in `ssl_FindSocket()` and legacy
+    `SSL_ENABLE_SSL3`/`SSL_ENABLE_TLS` range downgrade*: `ssl_FindSocket()` writes
+    the matched `PRFileDesc*` layer pointer into `ss->fd` on every lookup (so
+    multiplexed HTTP/2 streams must capture TLS metadata once on the connection
+    driver thread rather than calling `SSL_*` getters concurrently from stream
+    workers), and legacy `SSL_OptionSet(SSL_ENABLE_SSL3/TLS, PR_TRUE)` calls invoke
+    NSS's contiguous-range shim and downgrade `SSLVersionRange.min`.
 - **Event-loop rewrite risk to existing deployments**: the phased/parallel-path
   strategy in §3.3 is specifically designed to avoid regressing the currently-solid
   HTTP/1.1 behavior. Skipping the "port HTTP/1.1 first, unchanged" step would be the

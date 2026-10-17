@@ -600,6 +600,10 @@ PRStatus servssl_init_late(PRFileDesc *console, const Pkcs11& pkcs11)
         }
     }
 
+    if (globals->Vssl_cache_entries == 0) {
+        SSL_OptionSetDefault(SSL_NO_CACHE, PR_TRUE);
+    }
+
     if (globals->Vsecurity_active) {
         if (_nss_InitTokens(pkcs11) != SECSuccess) { 
             ereport(LOG_FAILURE, XP_GetAdminStr(DBT_servNSSPKCS11InitFailed), 
@@ -763,10 +767,13 @@ PRStatus servssl_check_session(Session *sn)
 
     cla = (ClAuth_t*)sn->clauth;
     cert = SSL_PeerCertificate(sn->csd);
-
-    if (cla->cla_cert != NULL)
-	CERT_DestroyCertificate(cla->cla_cert);
-    cla->cla_cert = cert;
+    if (cert != NULL) {
+        if (cla->cla_cert != NULL)
+            CERT_DestroyCertificate(cla->cla_cert);
+        cla->cla_cert = cert;
+    } else {
+        cert = cla->cla_cert;
+    }
 
     if (cert)
 	return PR_SUCCESS;	// we have a cert - ok
@@ -774,7 +781,8 @@ PRStatus servssl_check_session(Session *sn)
     if (-1 == sn->clientauth)
 	return PR_SUCCESS;	// cert was optional - ok
     
-    SSL_InvalidateSession(sn->csd);
+    if (conf_get_true_globals()->Vssl_cache_entries > 0)
+        SSL_InvalidateSession(sn->csd);
 
     return PR_FAILURE;	// still no cert - fail
 }

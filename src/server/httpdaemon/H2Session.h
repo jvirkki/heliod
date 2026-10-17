@@ -324,6 +324,12 @@ public:
      */
     void streamHeadersReady(H2Stream* stream);
 
+    /**
+     * Populate an NSAPI Session's TLS client pblock entries and peer
+     * certificate from the TLS state captured on this HTTP/2 connection.
+     */
+    void fillSSLSession(Session* sn) const;
+
 private:
     /** Length of the mandatory HTTP/2 client connection preface. */
     static const size_t kPrefaceLen = 24;
@@ -539,6 +545,18 @@ private:
     // that blocks there must push its own bytes out directly rather than try to
     // claim a token it is already holding.
     PRThread* driver_;
+
+    // Connection-level TLS parameters captured once in init() while the driver
+    // token is held.  Immutable thereafter so stream workers can read them
+    // without touching the underlying NSS socket.
+    PRBool tlsSecOn_;
+    PRInt32 tlsKeySize_;
+    PRInt32 tlsSecretKeySize_;
+    std::string tlsCipher_;
+    std::string tlsIssuerDn_;
+    std::string tlsUserDn_;
+    std::string tlsSessionId_;
+    CERTCertificate* tlsPeerCert_;
 };
 
 } // namespace heliod
