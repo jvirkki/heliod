@@ -71,10 +71,18 @@ access_syntax_error(int n, const char *err, char *file,
 filebuffer * htaccess_cfg_open(char *name)
 {
     filebuffer *buf;
+    struct stat finfo;
     SYS_FILE fd = system_fopenRO(name);
     if(fd == SYS_ERROR_FD)
         return NULL;
-    if(!(buf = filebuf_open(fd, FILE_BUFFERSIZE))) {
+#ifdef XP_UNIX
+    memset(&finfo, 0, sizeof(finfo));
+    system_stat(name, &finfo);
+    buf = filebuf_open_nostat_nommap(fd, FILE_BUFFERSIZE, &finfo);
+#else
+    buf = filebuf_open(fd, FILE_BUFFERSIZE);
+#endif
+    if(!buf) {
         system_fclose(fd);
         return NULL;
     }
@@ -83,10 +91,14 @@ filebuffer * htaccess_cfg_open(char *name)
 
 void htaccess_cfg_close(filebuffer *buf)
 {
+#ifdef XP_UNIX
+    filebuf_close_nommap(buf);
+#else
     filebuf_close(buf);
+#endif
 }
 
-int htaccess_get_methods(int n, char * l, char *file, htaccess_context_s *ctxt) {
+int htaccess_get_methods(int n, char * l, char *file, htaccess_context_s *ctxt, int *out_methods) {
 
     char w[MAX_STRING_LEN];
     char w2[MAX_STRING_LEN];
@@ -116,7 +128,8 @@ int htaccess_get_methods(int n, char * l, char *file, htaccess_context_s *ctxt) 
                                         file,ctxt);
         methods |= (1 << methnum);
     }
-    return methods;
+    *out_methods = methods;
+    return REQ_PROCEED;
 }
 
 
@@ -160,14 +173,18 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
     int inlimitexcept=0;
     struct t_command * item;
     security_data * sec = htaccess_newsec();
+    if (!sec)
+        return die(NO_MEMORY,"parse_access_dir",ctxt);
 
     log_error(LOG_VERBOSE, "htaccess_parse_access_dir", ctxt->sn, ctxt->rq, 
               "Processing [%s]", file);
 
     x = ctxt->num_sec;
 
-    if(!(sec->d = (char *)MALLOC((sizeof(char)) * (strlen(dir) + 2))))
+    if(!(sec->d = (char *)MALLOC((sizeof(char)) * (strlen(dir) + 2)))) {
+        htaccess_freesec(sec);
         return die(NO_MEMORY,"parse_access_dir",ctxt);
+    }
     if(htaccess_is_matchexp(dir))
         strcpy(sec->d,dir);
     else
@@ -192,46 +209,62 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
         htaccess_cfg_getword(w,l);
 
         if(!strcasecmp(w,"AuthName")) {
-            if (inlimit || inlimitexcept)
+            if (inlimit || inlimitexcept) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n, "AuthName not allowed here.",
                                            file,ctxt);
+            }
             if(sec->auth_name) 
                 FREE(sec->auth_name);
-            if(!(sec->auth_name = STRDUP(l)))
+            if(!(sec->auth_name = STRDUP(l))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
+            }
         }
         else if(!strcasecmp(w,"AuthType")) {
-            if (inlimit || inlimitexcept)
+            if (inlimit || inlimitexcept) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n, "AuthType not allowed here.",
                                            file,ctxt);
+            }
             htaccess_cfg_getword(w,l);
             if(sec->auth_type) 
                 FREE(sec->auth_type);
-            if(!(sec->auth_type = STRDUP(w)))
+            if(!(sec->auth_type = STRDUP(w))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
+            }
         }
         else if(!strcasecmp(w,"AuthUserFile")) {
-            if (inlimit || inlimitexcept)
+            if (inlimit || inlimitexcept) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n, "AuthUserFile not allowed here.",
                                            file,ctxt);
+            }
             htaccess_cfg_getword(w,l);
             if(sec->auth_pwfile) 
                 FREE(sec->auth_pwfile);
-            if(!(sec->auth_pwfile = STRDUP(w)))
+            if(!(sec->auth_pwfile = STRDUP(w))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
+            }
 #ifdef AUTHNSDBFILE
             sec->auth_nsdb = 0;
 #endif /* AUTHNSDBFILE */
         }
         else if(!strcasecmp(w,"AuthGroupFile")) {
-            if (inlimit || inlimitexcept)
+            if (inlimit || inlimitexcept) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n, "AuthGroupFile not allowed here.",
                                            file,ctxt);
+            }
             htaccess_cfg_getword(w,l);
             if(sec->auth_grpfile) 
                 FREE(sec->auth_grpfile);
-            if(!(sec->auth_grpfile = STRDUP(w)))
+            if(!(sec->auth_grpfile = STRDUP(w))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
+            }
 #ifdef AUTHNSDBFILE
             sec->auth_nsdb = 0;
 #endif /* AUTHNSDBFILE */
@@ -243,10 +276,14 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
                 FREE(sec->auth_pwfile);
             if(sec->auth_grpfile) 
                 FREE(sec->auth_grpfile);
-            if(!(sec->auth_pwfile = STRDUP(w)))
+            if(!(sec->auth_pwfile = STRDUP(w))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
-            if(!(sec->auth_grpfile = STRDUP(w)))
+            }
+            if(!(sec->auth_grpfile = STRDUP(w))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
+            }
             sec->auth_nsdb = 1;
         }
 #endif /* AUTHNSDBFILE */
@@ -273,129 +310,189 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
         }
 #endif
         else if(!strcasecmp(w,"<Limit")) {
-            if (inlimit)
+            if (inlimit || inlimitexcept) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n, "<Limit> tags cannot be nested.",
                                            file,ctxt);
+            }
             inlimit = 1;
 
-            methods = htaccess_get_methods(n,l,file,ctxt);
+            if (htaccess_get_methods(n,l,file,ctxt,&methods) != REQ_PROCEED) {
+                htaccess_freesec(sec);
+                return REQ_ABORTED;
+            }
         }
         else if(!strcasecmp(w,"<LimitExcept")) {
-            if (inlimitexcept)
+            int except_methods = 0;
+            if (inlimit || inlimitexcept) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n, "<LimitExcept> tags cannot be "
                                            "nested.", file,ctxt);
+            }
             inlimitexcept = 1;
 
-            methods =~ htaccess_get_methods(n,l,file,ctxt);
+            if (htaccess_get_methods(n,l,file,ctxt,&except_methods) != REQ_PROCEED) {
+                htaccess_freesec(sec);
+                return REQ_ABORTED;
+            }
+            methods = ~except_methods;
         }
-        else if(!strcasecmp(w,"</Limit>"))
+        else if(!strcasecmp(w,"</Limit>")) {
+            if (!inlimit) {
+                htaccess_freesec(sec);
+                return access_syntax_error(n, "</Limit> without matching <Limit>.",
+                                           file,ctxt);
+            }
             inlimit = 0;
-        else if(!strcasecmp(w,"</LimitExcept>"))
+            methods = 0;
+        }
+        else if(!strcasecmp(w,"</LimitExcept>")) {
+            if (!inlimitexcept) {
+                htaccess_freesec(sec);
+                return access_syntax_error(n, "</LimitExcept> without matching <LimitExcept>.",
+                                           file,ctxt);
+            }
             inlimitexcept = 0;
+            methods = 0;
+        }
         else if(!strcasecmp(w,"order")) {
             int order;
+            char order_word[MAX_STRING_LEN];
 
-            if(!strcasecmp(l,"allow,deny")) {
+            htaccess_cfg_getword(order_word, l);
+            if(!strcasecmp(order_word,"allow,deny")) {
                 order = ALLOW_THEN_DENY;
             }
-            else if(!strcasecmp(l,"deny,allow")) {
+            else if(!strcasecmp(order_word,"deny,allow")) {
                 order = DENY_THEN_ALLOW;
             }
-            else if(!strcasecmp(l,"mutual-failure")) {
+            else if(!strcasecmp(order_word,"mutual-failure")) {
                 order = MUTUAL_FAILURE;
             }
-            else
+            else {
+                htaccess_freesec(sec);
                 return access_syntax_error(n,"Unknown order.",
                                            file,ctxt);
+            }
             for(i=0;i<MAX_METHODS;i++)
                 if (htaccess_check_method(methods, i))
                     sec->order[i] = order;
         } 
         else if((!strcasecmp(w,"allow"))) {
             htaccess_cfg_getword(w,l);
-            if(strcmp(w,"from"))
+            if(strcasecmp(w,"from")) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n,
                                     "allow must be followed by from.",
                                     file,ctxt);
+            }
             while(1) {
                 const char * error;
 
                 htaccess_cfg_getword(w,l);
                 if(!w[0]) break;
 
-                q = sec->num_allow++;
+                if((error = htaccess_check_allow(w))) {
+                    htaccess_freesec(sec);
+                    return access_syntax_error(n,error,file,ctxt);
+                }
+
+                q = sec->num_allow;
 
                 // grow table if necessary
                 if (sec->max_num_allow == q) {
                     if (grow_sectable(&(sec->max_num_allow), 
                                       &(sec->allow), 
                                       &(sec->allow_methods))) {
+                        htaccess_freesec(sec);
                         return die(NO_MEMORY, "parse_access_dir", ctxt);
                     }
                 }
-                if(!(sec->allow[q] = STRDUP(w)))
+                if(!(sec->allow[q] = STRDUP(w))) {
+                    htaccess_freesec(sec);
                     return die(NO_MEMORY,"parse_access_dir",ctxt);
-                if((error = htaccess_check_allow(w)))
-                    return access_syntax_error(n,error,file,ctxt);
+                }
                 sec->allow_methods[q] = methods;
+                sec->num_allow++;
             }
         }
         else if(!strcasecmp(w,"require")) {
             
-            q=sec->num_auth++;
+            q = sec->num_auth;
 
             // grow table if necessary
             if (sec->max_num_auth == q) {
                 if (grow_sectable(&(sec->max_num_auth), 
                                   &(sec->auth), 
                                   &(sec->auth_methods))) {
+                    htaccess_freesec(sec);
                     return die(NO_MEMORY, "parse_access_dir", ctxt);
                 }
             }
             
-            if(!(sec->auth[q] = STRDUP(l)))
+            if(!(sec->auth[q] = STRDUP(l))) {
+                htaccess_freesec(sec);
                 return die(NO_MEMORY,"parse_access_dir",ctxt);
+            }
             sec->auth_methods[q] = methods;
+            sec->num_auth++;
         }
         else if((!strcasecmp(w,"deny"))) {
             htaccess_cfg_getword(w,l);
-            if(strcmp(w,"from"))
+            if(strcasecmp(w,"from")) {
+                htaccess_freesec(sec);
                 return access_syntax_error(n,
                                     "deny must be followed by from.",
                                     file,ctxt);
+            }
             while(1) {
+                const char * error;
+
                 htaccess_cfg_getword(w,l);
                 if(!w[0]) break;
 
-                q=sec->num_deny++;
+                if((error = htaccess_check_allow(w))) {
+                    htaccess_freesec(sec);
+                    return access_syntax_error(n,error,file,ctxt);
+                }
+
+                q = sec->num_deny;
                 
                 // grow table if necessary
                 if (sec->max_num_deny == q) {
                     if (grow_sectable(&(sec->max_num_deny), 
                                       &(sec->deny), 
                                       &(sec->deny_methods))) {
+                        htaccess_freesec(sec);
                         return die(NO_MEMORY, "parse_access_dir", ctxt);
                     }
                 }
 
-                if(!(sec->deny[q] = STRDUP(w)))
+                if(!(sec->deny[q] = STRDUP(w))) {
+                    htaccess_freesec(sec);
                     return die(NO_MEMORY,"parse_access_dir", ctxt);
+                }
                 sec->deny_methods[q] = methods;
+                sec->num_deny++;
             }
         } else {
         /* Now check all registered directives */
         item = root;
         while (item) {
             if(!strcasecmp(w,item->directive)) {
-                if (inlimit || inlimitexcept)
+                if (inlimit || inlimitexcept) {
+                    htaccess_freesec(sec);
                     return access_syntax_error(n, "directive not allowed here.",
                                                file,ctxt);
+                }
                 switch(item->argtype) {
                     case BOOL:
                         htaccess_cfg_getword(w2,l);
-                        if (*w2 == '\0' || (strcasecmp(w2, "on") && strcasecmp(w2, "off")))
+                        if (*w2 == '\0' || (strcasecmp(w2, "on") && strcasecmp(w2, "off"))) {
+                            htaccess_freesec(sec);
                             return access_syntax_error(n, "must be On or Off.",
                                                        file,ctxt);
+                        }
 
                         htaccess_call_external_function(item->directive, 
                             item->function, 1, w2, NULL, ctxt->pb, ctxt->sn, 
@@ -403,23 +500,34 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
 
                         switch(item->authtype) {
                             case USER_AUTH:
-                                ctxt->user_check_fn = STRDUP(item->check_fn);
+                                if (ctxt->user_check_fn)
+                                    FREE(ctxt->user_check_fn);
+                                if (!(ctxt->user_check_fn = STRDUP(item->check_fn))) {
+                                    htaccess_freesec(sec);
+                                    return die(NO_MEMORY,"parse_access_dir",ctxt);
+                                }
                                 break;
                             case GROUP_AUTH:
-                                if (!(ctxt->group_check_fn = STRDUP(item->check_fn)))
-                                return die(NO_MEMORY,"parse_access_dir",ctxt);
+                                if (ctxt->group_check_fn)
+                                    FREE(ctxt->group_check_fn);
+                                if (!(ctxt->group_check_fn = STRDUP(item->check_fn))) {
+                                    htaccess_freesec(sec);
+                                    return die(NO_MEMORY,"parse_access_dir",ctxt);
+                                }
                                 break;
                             default:
+                                htaccess_freesec(sec);
                                 return access_syntax_error(n, "Invalid authentication type registered for function.", file,ctxt);
-                                break;
                         }
                         break;
 
                     case PASS1:
                         htaccess_cfg_getword(w2,l);
-                        if (*w2 == '\0')
+                        if (*w2 == '\0') {
+                            htaccess_freesec(sec);
                             return access_syntax_error(n, "argument missing.",
                                                        file,ctxt);
+                        }
 
                         htaccess_call_external_function(item->directive, 
                             item->function, 1, w2, NULL, ctxt->pb, ctxt->sn, 
@@ -433,13 +541,15 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
                             case GROUP_AUTH:
                                 if (!ctxt->group_check_fn)
                                     if (!(ctxt->group_check_fn = 
-                                        STRDUP(item->check_fn)))
+                                        STRDUP(item->check_fn))) {
+                                        htaccess_freesec(sec);
                                         return die(NO_MEMORY,"parse_access_dir",
                                             ctxt);
+                                    }
                                 break;
                             default:
-                                    return access_syntax_error(n, "Invalid authentication type registered for function.", file,ctxt);
-                                    break;
+                                htaccess_freesec(sec);
+                                return access_syntax_error(n, "Invalid authentication type registered for function.", file,ctxt);
                         }
 
                         break;
@@ -447,12 +557,14 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
                     case PASS2:
                         htaccess_cfg_getword(w2,l);
                         htaccess_cfg_getword(w3,l);
-                        if ((*w2 == '\0') || (*w3 == '\0'))
+                        if ((*w2 == '\0') || (*w3 == '\0')) {
+                            htaccess_freesec(sec);
                             return access_syntax_error(n, "argument missing.",
                                                        file,ctxt);
+                        }
 
                         htaccess_call_external_function(item->directive, 
-                            item->function, 1, w2, w3, ctxt->pb, ctxt->sn, 
+                            item->function, 2, w2, w3, ctxt->pb, ctxt->sn,
                             ctxt->rq);
 
                         switch(item->authtype) {
@@ -463,16 +575,19 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
                             case GROUP_AUTH:
                                 if (!ctxt->group_check_fn)
                                     if (!(ctxt->group_check_fn = 
-                                        STRDUP(item->check_fn)))
+                                        STRDUP(item->check_fn))) {
+                                        htaccess_freesec(sec);
                                         return die(NO_MEMORY,"parse_access_dir",
                                             ctxt);
+                                    }
                                 break;
                             default:
-                                    return access_syntax_error(n, "Invalid authentication type registered for function.", file,ctxt);
-                                    break;
+                                htaccess_freesec(sec);
+                                return access_syntax_error(n, "Invalid authentication type registered for function.", file,ctxt);
                         }
                         break;
                     default:
+                        htaccess_freesec(sec);
                         return access_syntax_error(n, "Unknown argument type "
                                                    "registered.", file,ctxt);
                 }
@@ -483,19 +598,17 @@ htaccess_parse_access_dir(filebuffer *f, int line, char _or, char *dir,
         }
         }
        /* Ignore directives we don't support */
-#if 0
-                else
-                    return access_syntax_error(n,
-                                           "Unknown keyword in Limit region.",
-                                           file,ctxt);
-#endif
     }
     /* EOF w/o </Limit> */
-    if(inlimit)
+    if(inlimit) {
+        htaccess_freesec(sec);
         return access_syntax_error(n,"<Limit> missing </Limit>", file,ctxt);
+    }
     /* EOF w/o </LimitExcept> */
-    if(inlimitexcept)
+    if(inlimitexcept) {
+        htaccess_freesec(sec);
         return access_syntax_error(n,"<LimitExcept> missing </LimitExcept>", file,ctxt);
+    }
     ++ctxt->num_sec;
     ctxt->sec = htaccess_addsec(ctxt->sec, sec);
     return REQ_PROCEED;
@@ -619,7 +732,11 @@ int htaccess_init_group(char *grpfile, htaccess_context_s *ctxt)
             return REQ_ABORTED;
         }
 
+#ifdef XP_UNIX
+        buf = filebuf_open_nostat_nommap(fd, FILE_BUFFERSIZE, &finfo);
+#else
         buf = filebuf_open(fd, FILE_BUFFERSIZE);
+#endif
         if(!buf) {
             log_error(LOG_FAILURE, "htaccess-find", ctxt->sn, ctxt->rq, 
                       "can't open buffer for group file %s (%s)",
@@ -628,20 +745,28 @@ int htaccess_init_group(char *grpfile, htaccess_context_s *ctxt)
             return REQ_ABORTED;
         }
 
+        if (ctxt->auth_authdb) {
+            htaccess_kill_group(ctxt);
+        }
         ctxt->auth_authdb = (void *)buf;
 
         /* Do we have a list of this user's groups? */
         if (ctxt->auth_grplist) {
 
             /* Is this the same group file used to construct the list? */
-            if (strcmp(grpfile, ctxt->auth_grplfile)) {
+            if (!ctxt->auth_grplfile || strcmp(grpfile, ctxt->auth_grplfile)) {
 
                 /* No, free the old list */
                 FREE(ctxt->auth_grplist);
-                FREE(ctxt->auth_grplfile);
+                if (ctxt->auth_grplfile)
+                    FREE(ctxt->auth_grplfile);
                 ctxt->auth_grplist = 0;
                 ctxt->auth_grplfile = STRDUP(grpfile);
             }
+        } else {
+            if (ctxt->auth_grplfile)
+                FREE(ctxt->auth_grplfile);
+            ctxt->auth_grplfile = STRDUP(grpfile);
         }
     }
 
@@ -909,7 +1034,11 @@ void htaccess_kill_group(htaccess_context_s *ctxt)
         else
 #endif /* AUTHNSDBFILE */
         {
+#ifdef XP_UNIX
+            filebuf_close_nommap((filebuffer *)(ctxt->auth_authdb));
+#else
             filebuf_close((filebuffer *)(ctxt->auth_authdb));
+#endif
         }
         ctxt->auth_authdb = 0;
     }
@@ -919,23 +1048,29 @@ void htaccess_kill_group(htaccess_context_s *ctxt)
  * in_ip is more efficient.
  */
 const char * htaccess_check_allow(char * where) {
+    char buf[MAX_STRING_LEN];
     char * s;
+
+    if (!where)
+        return "invalid IP address format";
 
     if (!strcasecmp(where, "all"))
         return NULL;
 
-    if ((s = strchr(where, '/'))) {
-        unsigned long mask;
+    htaccess_lim_strcpy(buf, where, sizeof(buf));
+
+    if ((s = strchr(buf, '/'))) {
+        int mask;
 
         *s++ = '\0';
 
         /* Make sure we have a valid IP address */
-        if (!htaccess_is_ip(where)) {
+        if (!*buf || !htaccess_is_ip(buf)) {
             return "invalid IP address format";
         }
 
         /* Make sure the mask is ok */
-        if (!htaccess_is_ip(s)) {
+        if (!*s || !htaccess_is_ip(s)) {
             return "invalid network mask";
         }
 
@@ -950,20 +1085,20 @@ const char * htaccess_check_allow(char * where) {
             return "invalid network mask";
         }
         return NULL;
-    } else if (isdigit(*where) && htaccess_is_ip(where)) {
+    } else if (isdigit((unsigned char)*buf) && htaccess_is_ip(buf)) {
         /* handle a.b.c. ==> a.b.c.0/24 */
 
         char * t;
         int octet;
         int shift=24;
 
-        s = where;
+        s = buf;
         while (*s) {
             t = s;
-            if (!isdigit(*t))
+            if (!isdigit((unsigned char)*t))
                 return "invalid IP address, 1 only digits and '.' allowed";
 
-            while (isdigit(*t))
+            while (isdigit((unsigned char)*t))
                 ++t;
 
             if (*t == '.')

@@ -45,7 +45,9 @@ security_data * htaccess_newsec(void)
 {
     security_data * item;
 
-    item = (security_data *)MALLOC(sizeof(security_data));
+    item = (security_data *)CALLOC(sizeof(security_data));
+    if (!item)
+        return NULL;
 
     item->max_num_allow = SECTABLE_ALLOC_UNIT;
     item->allow = (char **)CALLOC(sizeof(char *) * SECTABLE_ALLOC_UNIT);
@@ -108,47 +110,77 @@ security_data * htaccess_getsec(security_data * head, int x)
         return NULL;
 }
 
+void htaccess_freesec(security_data * item)
+{
+    int y;
+
+    if (!item)
+        return;
+
+    if (item->d)
+        FREE(item->d);
+
+    if (item->allow) {
+        for (y = 0; y < item->num_allow; y++) {
+            if (item->allow[y])
+                FREE(item->allow[y]);
+        }
+        FREE(item->allow);
+    }
+    if (item->allow_methods)
+        FREE(item->allow_methods);
+    item->max_num_allow = 0;
+
+    if (item->deny) {
+        for (y = 0; y < item->num_deny; y++) {
+            if (item->deny[y])
+                FREE(item->deny[y]);
+        }
+        FREE(item->deny);
+    }
+    if (item->deny_methods)
+        FREE(item->deny_methods);
+    item->max_num_deny = 0;
+
+    if (item->auth) {
+        for (y = 0; y < item->num_auth; y++) {
+            if (item->auth[y])
+                FREE(item->auth[y]);
+        }
+        FREE(item->auth);
+    }
+    if (item->auth_methods)
+        FREE(item->auth_methods);
+    item->max_num_auth = 0;
+
+    if (item->auth_type)
+        FREE(item->auth_type);
+    if (item->auth_name)
+        FREE(item->auth_name);
+
+    if (item->auth_pwfile)
+        FREE(item->auth_pwfile);
+    if (item->auth_grpfile)
+        FREE(item->auth_grpfile);
+
+    FREE(item);
+}
+
 /* Free all elements of the list except the head */
 void htaccess_secflush(security_data * head)
 {
     security_data * start;
     security_data * item;
-    int y;
+
+    if (!head)
+        return;
 
     start = head->next;
+    head->next = NULL;
 
     while(start) {
         item = start;
-        FREE(item->d);
-
-        for(y=0;y<item->num_allow;y++)
-            FREE(item->allow[y]);
-        FREE(item->allow);
-        FREE(item->allow_methods);
-        item->max_num_allow = 0;
-
-        for(y=0;y<item->num_deny;y++)
-            FREE(item->deny[y]);
-        FREE(item->deny);
-        FREE(item->deny_methods);
-        item->max_num_deny = 0;
-
-        for(y=0;y<item->num_auth;y++)
-            FREE(item->auth[y]);
-        FREE(item->auth);
-        FREE(item->auth_methods);
-        item->max_num_auth = 0;
-
-        if(item->auth_type)
-            FREE(item->auth_type);
-        if(item->auth_name)
-            FREE(item->auth_name);
-
-        if(item->auth_pwfile)
-            FREE(item->auth_pwfile);
-        if(item->auth_grpfile)
-            FREE(item->auth_grpfile);
         start = item->next;
-        FREE(item);
+        htaccess_freesec(item);
     }
 }

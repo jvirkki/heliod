@@ -193,4 +193,5 @@ extern char *_ht_fn_usrgrp;
 security_data * htaccess_newsec(void);
 security_data * htaccess_addsec(security_data * head, security_data * item);
 security_data * htaccess_getsec(security_data * head, int x);
+void htaccess_freesec(security_data * item);
 void htaccess_secflush(security_data * head);

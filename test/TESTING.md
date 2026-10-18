@@ -435,6 +435,33 @@ and HTTP/2:
   followed by automatic respawn under a 16-request burst, and 3 full
   `stopserv`/`startserv` server restart cycles verifying clean stub termination
   and respawn with zero ASAN/UBSAN errors.  Reuses `https-test`.
+- `htaccess_smoke.sh [work-root]` — `.htaccess` directive parsing,
+  authentication, IP/domain access control, and dynamic `.htaccess` rewrite
+  under concurrent load (`plugins/htaccess/*`, `libaccess/cryptwrapper.cpp`,
+  `safs/auth.cpp`, `base/buffer.cpp`).  Runs four phases: (1) compiles
+  `htpasswd.c` and the `.htaccess` plugin + `cryptwrapper.cpp` under
+  AddressSanitizer + UndefinedBehaviorSanitizer (`-fsanitize=address,undefined`)
+  and verifies `htpasswd -c` and password updates, `ACL_CryptCompare()` with
+  valid hashes and invalid/empty salts where `crypt()` returns `NULL`, all
+  supported `.htaccess` directives (`AuthName`, `AuthType`, `AuthUserFile`,
+  `AuthGroupFile`, `<Limit>`, `</Limit>`, `<LimitExcept>`, `</LimitExcept>`,
+  `order allow,deny` / `deny,allow` / `mutual-failure`, `allow from` / `deny
+  from` with `all`, domain suffixes, exact IPs, partial `a.b.c.` prefixes,
+  `/nnn` CIDR masks, and `/a.b.c.d` netmasks, `require valid-user`, `require
+  user`, `require group` with separate and combined `groups-with-users`
+  databases, and custom directives registered via `htaccess-register`),
+  multi-level directory hierarchies (`num_sec >= 2`), directory requests
+  without a trailing slash, exact username matching in group files (no prefix
+  match), and malformed `.htaccess` syntax-error paths without memory leaks;
+  (2) compiles and runs the same concurrent reader/rewriter stress harness under
+  ThreadSanitizer (`-fsanitize=thread`); (3) when `<work-root>` is passed,
+  loads `plugins/htaccess/htaccess.so` into `https-test` and verifies all
+  directives across `io-model=classic` (18180), `io-model=event` (18181), and
+  HTTP/2 (`h2c`); and (4) runs a 60-second load test (`HTACCESS_LOAD_SECONDS`, default `60`) that
+  rewrites `.htaccess` in place (`O_TRUNC`) every 100 ms across varying file
+  sizes while 8 concurrent client threads drive requests against both classic
+  and event listeners, asserting zero worker crashes or PID changes.  Reuses
+  `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 

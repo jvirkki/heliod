@@ -277,6 +277,16 @@ test-pam:
 	$(BUILD_ROOT)/test/pam_auth_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- PAM auth smoke test passed -----"
 
+# htaccess plugin directive parsing, authentication, IP/domain access control,
+# and dynamic .htaccess rewrite under concurrent load test: runs standalone
+# ASAN/UBSAN and TSAN tests of src/server/plugins/htaccess/* and cryptwrapper
+# plus a live webservd directive + 100ms dynamic .htaccess rewrite load test.
+test-htaccess:
+	@echo "----- Running htaccess smoke test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/htaccess_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- htaccess smoke test passed -----"
+
 # Event I/O smoke test (uses the https-test instance from make install).
 test-event:
 	@echo "----- Running event I/O smoke test -----"

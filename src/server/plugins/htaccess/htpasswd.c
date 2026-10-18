@@ -160,8 +160,15 @@ void set_password(char *user, char *password, FILE * f)
     }
     (void) srand((int) time((time_t *) NULL));
     to64(&salt[0], rand(), 2);
+    salt[2] = '\0';
     cpw = crypt(pw, salt);
     free(pw);
+    if (!cpw) {
+        fprintf(stderr, "crypt() failed.\n");
+        if (tfile)
+            unlink(tfile);
+        exit(1);
+    }
     fprintf(f, "%s:%s\n", user, cpw);
 }
 

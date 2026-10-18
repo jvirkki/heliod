@@ -177,34 +177,67 @@ NSAPI_PUBLIC filebuf_t* filebuf_open_nostat_nommap(SYS_FILE fd, int sz,
                                                 struct stat *finfo)
 {
     filebuf_t *buf = (filebuf_t *) MALLOC(sizeof(filebuf_t));
-    off_t n = finfo->st_size;
+    if (!buf)
+        return NULL;
+    int cap = (finfo && finfo->st_size > 0) ? (int)finfo->st_size : 0;
     buf->pos = 0;
-    buf->len = finfo->st_size;
-    buf->cursize = finfo->st_size;
+    buf->len = 0;
+    buf->cursize = 0;
     buf->fd = fd;
     buf->inbuf = NULL;
     buf->errmsg = NULL;
     buf->fp = 0;
-    if(buf->len) {
-        buf->fp = (char*) PERM_MALLOC(buf->len);
-        if(!(buf->fp)) {
+    if (cap == 0) {
+        int probe = (sz > 0) ? sz : FILE_BUFFERSIZE;
+        buf->fp = (char *)PERM_MALLOC(probe);
+        if (!buf->fp) {
             FREE(buf);
             return NULL;
         }
-        int bytesRead = 0;
-        char* p = buf->fp;
-        while (((bytesRead = system_fread(fd, p, buf->len)) > 0) && (n > 0)) {
-           p += bytesRead;
-           n =  n - bytesRead;
-        }
-        if (n != 0) {
-          PERM_FREE(buf->fp);
-          buf->fp = 0;
-          FREE(buf);
-          return NULL;
+        cap = probe;
+    } else {
+        buf->fp = (char *)PERM_MALLOC(cap);
+        if (!buf->fp) {
+            FREE(buf);
+            return NULL;
         }
     }
- 
+
+    int totalRead = 0;
+    while (1) {
+        if (totalRead == cap) {
+            int grow = (sz > 0) ? sz : FILE_BUFFERSIZE;
+            int new_cap = cap + grow;
+            if (new_cap <= cap)
+                break;
+            char *new_fp = (char *)PERM_REALLOC(buf->fp, new_cap);
+            if (!new_fp) {
+                PERM_FREE(buf->fp);
+                buf->fp = 0;
+                FREE(buf);
+                return NULL;
+            }
+            buf->fp = new_fp;
+            cap = new_cap;
+        }
+        int bytesRead = system_fread(fd, buf->fp + totalRead, cap - totalRead);
+        if (bytesRead < 0) {
+            PERM_FREE(buf->fp);
+            buf->fp = 0;
+            FREE(buf);
+            return NULL;
+        }
+        if (bytesRead == 0)
+            break;
+        totalRead += bytesRead;
+    }
+
+    if (totalRead == 0) {
+        PERM_FREE(buf->fp);
+        buf->fp = 0;
+    }
+    buf->len = totalRead;
+    buf->cursize = totalRead;
     return buf;
 }
 

@@ -123,12 +123,15 @@ NSAPI_PUBLIC
 int ACL_CryptCompare(const char *key, const char *salt, const char *encrypted)
 {
     char *enpass = NULL;
-    int rv = 0;
+    int rv = -1;
+    if (!key || !salt || !encrypted)
+        return -1;
 #if defined(ACL_CRYPT_USES_CRIT)
     crit_enter(acl_crypt_crit);
 #endif
     enpass = crypt(key, salt);
-    rv = strcmp(encrypted, enpass);
+    if (enpass)
+        rv = strcmp(encrypted, enpass);
 #if defined(ACL_CRYPT_USES_CRIT)
     crit_exit(acl_crypt_crit);
 #endif

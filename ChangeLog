@@ -1,5 +1,61 @@
 2026-10-17  Joe McCabe <joe@jmccabe.org>
 
+        * Bug fix: fix .htaccess plugin crashes on dynamic .htaccess rewrite
+          under load and on Linux/64-bit directive parsing and authentication
+          (Oracle 14094667, 6928578).
+
+            The .htaccess plugin (src/server/plugins/htaccess/) and related
+            file-buffer / authentication helpers in src/server/base/buffer.cpp,
+            src/server/libaccess/cryptwrapper.cpp, and src/server/safs/auth.cpp
+            had two classes of crash defects:
+            - Dynamic .htaccess / password / group file updates under load
+              (Oracle 14094667): htaccess_cfg_open(), htaccess_init_group(),
+              htaccess_userdb(), simple_user(), and simple_group() opened files
+              with filebuf_open(), which memory-maps files via mmap().  When a
+              .htaccess, .htpasswd, or group file was truncated/rewritten in
+              place (O_TRUNC) while concurrent worker threads were reading
+              buf->fp, the kernel delivered SIGBUS on any access past the new
+              EOF.  These readers now use filebuf_open_nostat_nommap() /
+              filebuf_close_nommap(), and filebuf_open_nostat_nommap() has been
+              updated to read until EOF (dynamically growing its heap buffer if
+              the file grew after stat() and succeeding on short reads if the
+              file shrank or was truncated concurrently).
+            - Linux and 64-bit directive/auth crashes and memory corruption
+              (Oracle 6928578):
+              * ACL_CryptCompare() in cryptwrapper.cpp passed the return value
+                of crypt() directly to strcmp() without checking for NULL
+                (modern Linux glibc/libxcrypt returns NULL on invalid or empty
+                salts), and set_password() in htpasswd.c left salt[2]
+                uninitialized before calling crypt(pw, salt).
+              * htaccess_evaluate_access() allocated len + 1 bytes for path and
+                root_dir, causing a 1-byte heap buffer overflow on directory
+                requests when htaccess_strcpy_dir() appended a trailing '/'.
+              * _htaccess_freectxt() freed ctxt->user_check_fn,
+                ctxt->group_check_fn, ctxt->auth_grplist, and
+                ctxt->auth_grplfile inside a for (x = 0; x < ctxt->num_sec; x++)
+                loop (double-freeing whenever 2 or more .htaccess files applied
+                in a directory hierarchy) and called FREE(ctxt->sec) without
+                freeing the head placeholder's allow/deny/auth arrays.
+              * htaccess_parse_access_dir() did not propagate syntax/OOM errors
+                to htaccess_evaluate_access(), leaked sec on early error
+                returns, failed to reset the active method mask on </Limit> and
+                </LimitExcept>, did not strip trailing whitespace on order
+                directives, and passed args=1 instead of 2 for PASS2 registered
+                directives.
+              * htaccess_check_auth() left user_fn and group_fn uninitialized on
+                custom-auth paths, called strcmp(NULL, group_db) when
+                ctxt->auth_pwfile was NULL, and leaked STRDUP("basic") /
+                STRDUP("unspecified") into ctxt->auth_type / ctxt->auth_name.
+              * htaccess_in_ip() and htaccess_check_allow() mutated
+                sec->allow[y] / sec->deny[y] in place, used 64-bit unsigned
+                long for IPv4 addresses/masks, and masked allowedip before
+                calling inet_addr().
+              * simple_group() in auth.cpp used strncmp(user, t, u - t) without
+                checking strlen(user) == (size_t)(u - t) (prefix-matching
+                usernames), allocated MALLOC(buf->len) once without dynamic
+                growth, and omitted the last line if it lacked a trailing
+                newline.
+
         * Bug fix: fix FastCGI stub process (Fastcgistub) crashes, concurrency
           races, and memory safety defects across spawn, restart, and shutdown
           (Oracle 12643441).

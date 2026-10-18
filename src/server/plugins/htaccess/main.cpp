@@ -110,7 +110,11 @@ htaccess_userdb(pblock *pb, Session *sn, Request *rq)
         return REQ_ABORTED;
     }
 
+#ifdef XP_UNIX
+    buf = filebuf_open_nostat_nommap(fd, FILE_BUFFERSIZE, &finfo);
+#else
     buf = filebuf_open(fd, FILE_BUFFERSIZE);
+#endif
     if(!buf) {
         log_error(LOG_FAILURE, "htaccess-userdb", sn, rq, 
                   "can't open buffer from password file %s (%s)", userdb, 
@@ -124,6 +128,8 @@ htaccess_userdb(pblock *pb, Session *sn, Request *rq)
     for (eof = 0, ln = 1; !eof; ++ln) {
 
         eof = util_getline(buf, ln, sizeof(line), line);
+        if (eof < 0)
+            break;
         if (line[0]) {
 
             /* Look for ':' terminating user name */
@@ -169,7 +175,11 @@ htaccess_userdb(pblock *pb, Session *sn, Request *rq)
                         pblock_nvinsert("auth-group", "", rq->vars);
                     }
 
+#ifdef XP_UNIX
+                    filebuf_close_nommap(buf);
+#else
                     filebuf_close(buf);
+#endif
                     return REQ_PROCEED;
                 }
             }
@@ -178,7 +188,11 @@ htaccess_userdb(pblock *pb, Session *sn, Request *rq)
     }
 
     /* The desired user was not found, or the password didn't match */
+#ifdef XP_UNIX
+    filebuf_close_nommap(buf);
+#else
     filebuf_close(buf);
+#endif
     return REQ_NOACTION;
 }
 

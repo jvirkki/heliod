@@ -124,7 +124,7 @@ char *_uudecode(char *bufcoded)
     int nbytesdecoded;
 
     /* Find the length */
-    while(pr2six[(int)*(bufin++)] <= 63);
+    while(pr2six[(unsigned char)*(bufin++)] <= 63);
     nprbytes = bufin - bufcoded - 1;
     nbytesdecoded = ((nprbytes+3)/4) * 3;
 
@@ -135,17 +135,17 @@ char *_uudecode(char *bufcoded)
     
     while (nprbytes > 0) {
         *(bufout++) = (unsigned char) 
-            (pr2six[(int)(*bufin)] << 2 | pr2six[(int)bufin[1]] >> 4);
+            (pr2six[(unsigned char)(*bufin)] << 2 | pr2six[(unsigned char)bufin[1]] >> 4);
         *(bufout++) = (unsigned char) 
-            (pr2six[(int)bufin[1]] << 4 | pr2six[(int)bufin[2]] >> 2);
+            (pr2six[(unsigned char)bufin[1]] << 4 | pr2six[(unsigned char)bufin[2]] >> 2);
         *(bufout++) = (unsigned char) 
-            (pr2six[(int)bufin[2]] << 6 | pr2six[(int)bufin[3]]);
+            (pr2six[(unsigned char)bufin[2]] << 6 | pr2six[(unsigned char)bufin[3]]);
         bufin += 4;
         nprbytes -= 4;
     }
     
     if(nprbytes & 03) {
-        if(pr2six[(int)bufin[-2]] > 63)
+        if(pr2six[(unsigned char)bufin[-2]] > 63)
             nbytesdecoded -= 2;
         else
             nbytesdecoded -= 1;
@@ -307,15 +307,27 @@ int simple_group(pblock *param, Session *sn, Request *rq)
 {
     SYS_FILE fd;
     filebuf_t *buf;
+    struct stat finfo;
     int eof, ln = 0;
     char *t, *u;
     char line[AUTH_MAX_LINE];
     char *groupnames = NULL;
+    size_t groupnames_cap = 0;
+    size_t groupnames_len = 0;
     int empty = 1;
 
 
     char *gfn = pblock_findval("groupdb", param);
     char *user = pblock_findval("user", param);
+
+    if (!gfn || !user) {
+        log_error(LOG_MISCONFIG, "basic-ncsa", sn, rq,
+                  XP_GetAdminStr(DBT_authError4), gfn ? gfn : "(null)");
+        protocol_status(sn, rq, PROTOCOL_SERVER_ERROR, NULL);
+        return REQ_ABORTED;
+    }
+
+    size_t user_len = strlen(user);
 
     rq->directive_is_cacheable = 1;
 
@@ -325,10 +337,18 @@ int simple_group(pblock *param, Session *sn, Request *rq)
         protocol_status(sn, rq, PROTOCOL_SERVER_ERROR, NULL);
         return REQ_ABORTED;
     }
-    if(!(buf = filebuf_open(fd, FILE_BUFFERSIZE))) {
+#ifdef XP_UNIX
+    memset(&finfo, 0, sizeof(finfo));
+    system_stat(gfn, &finfo);
+    buf = filebuf_open_nostat_nommap(fd, FILE_BUFFERSIZE, &finfo);
+#else
+    buf = filebuf_open(fd, FILE_BUFFERSIZE);
+#endif
+    if(!buf) {
         log_error(LOG_FAILURE, "basic-ncsa", sn, rq, 
                   XP_GetAdminStr(DBT_authError5), gfn);
         protocol_status(sn, rq, PROTOCOL_SERVER_ERROR, NULL);
+        system_fclose(fd);
         return REQ_ABORTED;
     }
 
@@ -339,17 +359,31 @@ int simple_group(pblock *param, Session *sn, Request *rq)
 
     while(1) {
         eof = util_getline(buf, ++ln, AUTH_MAX_LINE, line);
+        if (eof < 0) {
+#ifdef XP_UNIX
+            filebuf_close_nommap(buf);
+#else
+            filebuf_close(buf);
+#endif
+            if (groupnames)
+                FREE(groupnames);
+            return REQ_NOACTION;
+        }
         if(!line[0]) {
             if(eof) {
+#ifdef XP_UNIX
+                filebuf_close_nommap(buf);
+#else
                 filebuf_close(buf);
-                if(empty ==1)
+#endif
+                if(empty == 1)
                     return REQ_PROCEED;
                 if(groupnames != NULL) {
                     /* Add comma seperated list of matched group
                      * names into auth-group.
                      */
                     pblock_kvinsert(pb_key_auth_group, groupnames,
-                                    strlen(groupnames), rq->vars);
+                                    groupnames_len, rq->vars);
                     FREE(groupnames);
                     return REQ_PROCEED;
                 }
@@ -362,8 +396,13 @@ int simple_group(pblock *param, Session *sn, Request *rq)
 
         empty = 0;
         for(t = line; *t && (*t != ':'); t++);
-        if(!(*t))
+        if(!(*t)) {
+            if (eof) {
+                line[0] = '\0';
+                continue;
+            }
             continue;
+        }
         *t++ = '\0';
 
         /* "line" contains the group name and buffer "t" contains
@@ -374,26 +413,59 @@ int simple_group(pblock *param, Session *sn, Request *rq)
          */
 
         while(1) {
-            while((*t) && (*t == ' ')) ++t;
+            while((*t) && (*t == ' ' || *t == '\t')) ++t;
             if(!(*t))
                 break;
             u = t;
 
-            while((*u) && (*u != ' ')) ++u;
-            if(!strncmp(user, t, u - t)) {
-                if(groupnames == NULL) {
-                    groupnames = (char *)MALLOC(buf->len);
-                    strcpy(groupnames, line);
+            while((*u) && (*u != ' ' && *u != '\t')) ++u;
+            if (((size_t)(u - t) == user_len) && !strncmp(user, t, user_len)) {
+                size_t gname_len = strlen(line);
+                size_t needed = groupnames_len + (groupnames ? 1 : 0) + gname_len + 1;
+                if (needed > groupnames_cap) {
+                    size_t new_cap = groupnames_cap ? groupnames_cap * 2 : ((size_t)buf->len + 128);
+                    while (new_cap < needed)
+                        new_cap *= 2;
+                    char *new_buf = groupnames ? (char *)REALLOC(groupnames, new_cap)
+                                               : (char *)MALLOC(new_cap);
+                    if (!new_buf) {
+                        if (groupnames)
+                            FREE(groupnames);
+#ifdef XP_UNIX
+                        filebuf_close_nommap(buf);
+#else
+                        filebuf_close(buf);
+#endif
+                        return REQ_ABORTED;
+                    }
+                    groupnames = new_buf;
+                    groupnames_cap = new_cap;
                 }
-                else {
-                    strcat(groupnames, ",");
-                    strcat(groupnames, line);
-                }
+                if (groupnames_len > 0)
+                    groupnames[groupnames_len++] = ',';
+                memcpy(groupnames + groupnames_len, line, gname_len + 1);
+                groupnames_len += gname_len;
+                break;
             }
             if(!(*u))
                 break;
             else
                 t = u;
+        }
+
+        if (eof) {
+#ifdef XP_UNIX
+            filebuf_close_nommap(buf);
+#else
+            filebuf_close(buf);
+#endif
+            if(groupnames != NULL) {
+                pblock_kvinsert(pb_key_auth_group, groupnames,
+                                groupnames_len, rq->vars);
+                FREE(groupnames);
+                return REQ_PROCEED;
+            }
+            return REQ_NOACTION;
         }
     }
 }
@@ -413,12 +485,21 @@ simple_user(pblock *param, Session *sn, Request *rq)
     char line[AUTH_MAX_LINE];
     SYS_FILE fd;
     filebuf_t *buf;
+    struct stat finfo;
     int ln, eof, res;
     const char *reason;
 
     char *pwfile = pblock_findval("userdb", param);
     char *user = pblock_findval("user", param);
     char *pw = pblock_findval("pw", param);
+
+    if (!pwfile || !user || !pw) {
+        log_error(LOG_MISCONFIG, "basic-ncsa", sn, rq,
+                  XP_GetAdminStr(DBT_authError6), pwfile ? pwfile : "(null)",
+                  "missing parameter");
+        protocol_status(sn, rq, PROTOCOL_SERVER_ERROR, NULL);
+        return REQ_ABORTED;
+    }
 
     rq->directive_is_cacheable = 1;
 
@@ -430,16 +511,26 @@ simple_user(pblock *param, Session *sn, Request *rq)
         protocol_status(sn, rq, PROTOCOL_SERVER_ERROR, NULL);
         return REQ_ABORTED;
     }
-    if(!(buf = filebuf_open(fd, FILE_BUFFERSIZE))) {
+#ifdef XP_UNIX
+    memset(&finfo, 0, sizeof(finfo));
+    system_stat(pwfile, &finfo);
+    buf = filebuf_open_nostat_nommap(fd, FILE_BUFFERSIZE, &finfo);
+#else
+    buf = filebuf_open(fd, FILE_BUFFERSIZE);
+#endif
+    if(!buf) {
         log_error(LOG_FAILURE, "basic-ncsa", sn, rq, 
                   XP_GetAdminStr(DBT_authError7), pwfile, 
                   system_errmsg());
         protocol_status(sn, rq, PROTOCOL_SERVER_ERROR, NULL);
+        system_fclose(fd);
         return REQ_ABORTED;
     }
     ln = 1;
     while(1) {
         eof = util_getline(buf, ln, AUTH_MAX_LINE, line);
+        if (eof < 0)
+            goto ateof;
         if(!line[0]) {
 	    /* empty line */
             if(eof) /* eof after last line? */
@@ -448,8 +539,11 @@ simple_user(pblock *param, Session *sn, Request *rq)
                 continue;
         }
 
-        if(!(t = strchr(line, ':')))
+        if(!(t = strchr(line, ':'))) {
+            if (eof)
+                goto nosuchuser;
             continue;
+        }
         *t++ = '\0';
         if(!strcmp(line, user)) {
 #ifdef XP_WIN32
@@ -477,7 +571,11 @@ simple_user(pblock *param, Session *sn, Request *rq)
 		goto ateof;
             } else {
 		/* correct password */
+#ifdef XP_UNIX
+                filebuf_close_nommap(buf);
+#else
                 filebuf_close(buf);
+#endif
                 return REQ_PROCEED;
             }
         }
@@ -494,7 +592,11 @@ nosuchuser:
 	      user, pwfile);
     reason = "no such user";
 ateof:
+#ifdef XP_UNIX
+    filebuf_close_nommap(buf);
+#else
     filebuf_close(buf);
+#endif
     /* MLM - Admin server wants this to stop if the user gives
      *       the wrong password or if they don't exist.  Leave
      *       a message for the admin server and return noaction. */

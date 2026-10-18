@@ -57,11 +57,13 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
 {
     Request *rq = ctxt->rq;
     char *auth_type = pblock_findval("auth-type", rq->vars);
+    const char *eff_auth_type;
+    const char *eff_auth_name;
     char *auth_user;
     char *auth_group = NULL;
-    char *auth_fn;
-    char *user_fn;
-    char *group_fn;
+    char *auth_fn = NULL;
+    char *user_fn = NULL;
+    char *group_fn = NULL;
     char *group_db = NULL;
     char *group;
     pblock *npb;
@@ -73,20 +75,16 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
     int grpstatus = 0;
 
     /* If no AuthType directive, assume HTTP Basic authentication */
-    if (!ctxt->auth_type) {
-        ctxt->auth_type = STRDUP("basic");
-    }
+    eff_auth_type = ctxt->auth_type ? ctxt->auth_type : "basic";
 
     /* If no AuthName directive, provide a default */
-    if (!ctxt->auth_name) {
-        ctxt->auth_name = STRDUP("unspecified");
-    }
+    eff_auth_name = ctxt->auth_name ? ctxt->auth_name : "unspecified";
 
     /* Has the desired type of authentication already happened? */
-    if (!auth_type || strcasecmp(auth_type, ctxt->auth_type)) {
+    if (!auth_type || strcasecmp(auth_type, eff_auth_type)) {
 
         /* No, set up to do it */
-        if (!strcasecmp(ctxt->auth_type, "basic")) {
+        if (!strcasecmp(eff_auth_type, "basic")) {
 
             /* Get name of "basic" authentication SAF */
             auth_fn = _ht_fn_basic;
@@ -128,7 +126,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
             {
                 /* Handle combined user/group database if indicated */
                 if ((_ht_gwu && !group_db) ||
-                    (group_db && !strcmp(ctxt->auth_pwfile, group_db))) {
+                    (group_db && ctxt->auth_pwfile && !strcmp(ctxt->auth_pwfile, group_db))) {
 
                     /* Combined database, ignore group_db */
                     group_db = ctxt->auth_pwfile;
@@ -138,7 +136,8 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
                 else {
 
                     /* Separate user database */
-                    user_fn = (ctxt->user_check_fn) ? ctxt->user_check_fn : (char *)"simple-userdb";
+                    user_fn = (ctxt->user_check_fn) ? ctxt->user_check_fn
+                                                    : (_ht_fn_user ? _ht_fn_user : (char *)"simple-userdb");
                     /* Separate group database */
                     if (group_db)
                        group_fn = (ctxt->group_check_fn) ? ctxt->group_check_fn : (char *)"simple-groupdb";
@@ -148,7 +147,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
         }
         else {
             log_error(LOG_MISCONFIG, "htaccess-find", ctxt->sn, rq,
-                      "unsupported authentication type %s", ctxt->auth_type);
+                      "unsupported authentication type %s", eff_auth_type);
             protocol_status(ctxt->sn, rq, PROTOCOL_SERVER_ERROR, NULL);
             return REQ_ABORTED;
         }
@@ -157,7 +156,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
         param_free(pblock_remove("fn", npb)); /* don't want duplicate values */
 
         pblock_nvinsert("fn", auth_fn, npb);
-        pblock_nvinsert("auth-type", ctxt->auth_type, npb);
+        pblock_nvinsert("auth-type", eff_auth_type, npb);
         pblock_nvinsert("userfn", user_fn, npb);
 	if (ctxt->auth_pwfile)
             pblock_nvinsert("userdb", ctxt->auth_pwfile, npb);
@@ -165,7 +164,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
             pblock_nvinsert("userdb", "custom", npb);
 
         if (group_db) {
-            if (group_fn && strcmp(ctxt->auth_pwfile, group_db)) {
+            if (group_fn && (!ctxt->auth_pwfile || strcmp(ctxt->auth_pwfile, group_db))) {
                 pblock_nvinsert("groupdb", ctxt->auth_grpfile, npb);
                 pblock_nvinsert("groupfn", group_fn, npb);
             }
@@ -263,7 +262,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
                             log_error(LOG_MISCONFIG, "htaccess-find",
                                       ctxt->sn, rq,
                                       "failed to open group database %s",
-                                      ctxt->auth_pwfile);
+                                      group_db);
                             protocol_status(ctxt->sn, rq,
                                             PROTOCOL_SERVER_ERROR, NULL);
                             rv = REQ_ABORTED;
@@ -312,16 +311,20 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
                      * so test for membership in the required group.
                      */
                     if (htaccess_in_group(auth_user, group, glen, ctxt)) {
-
-                        strcpy(ctxt->groupname, group);
+                        int clen = (glen < (int)sizeof(ctxt->groupname) - 1)
+                                   ? glen : (int)sizeof(ctxt->groupname) - 1;
+                        memcpy(ctxt->groupname, group, clen);
+                        ctxt->groupname[clen] = '\0';
                         goto found;
                     }
                 }
                 else {
 
                     if (htaccess_check_group(group, glen, auth_group)) {
-
-                        strncpy(ctxt->groupname, group, glen);
+                        int clen = (glen < (int)sizeof(ctxt->groupname) - 1)
+                                   ? glen : (int)sizeof(ctxt->groupname) - 1;
+                        memcpy(ctxt->groupname, group, clen);
+                        ctxt->groupname[clen] = '\0';
                         goto found;
                     }
                 }
@@ -330,6 +333,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
         else {
             log_error(LOG_MISCONFIG, "htaccess-find", ctxt->sn, rq,
                       "require not followed by user or group");
+            protocol_status(ctxt->sn, rq, PROTOCOL_SERVER_ERROR, NULL);
             rv = REQ_ABORTED;
             goto finish;
         }
@@ -344,7 +348,7 @@ int htaccess_check_auth(security_data *sec, int m, htaccess_context_s *ctxt)
 
 
         util_snprintf(buf, sizeof(buf), "%s realm=\"%s\"",
-                      ctxt->auth_type, ctxt->auth_name);
+                      eff_auth_type, eff_auth_name);
         pblock_nvinsert("www-authenticate", buf, rq->srvhdrs);
         protocol_status(ctxt->sn, rq, PROTOCOL_UNAUTHORIZED, NULL);
     }

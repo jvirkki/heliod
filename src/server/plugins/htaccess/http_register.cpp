@@ -53,9 +53,17 @@ htaccess_register(pblock *pb, Session *sn, Request *rq)
     char *directive = pblock_findval("directive", pb);
     char *function = pblock_findval("function", pb);
     char *check_fn = pblock_findval("check_fn", pb);
-    int argtype = atoi(pblock_findval("argtype", pb));
-    int authtype = atoi(pblock_findval("authtype", pb));
+    char *argtype_str = pblock_findval("argtype", pb);
+    char *authtype_str = pblock_findval("authtype", pb);
+    int argtype = argtype_str ? atoi(argtype_str) : 0;
+    int authtype = authtype_str ? atoi(authtype_str) : 0;
     command * item;
+
+    if (!directive || !function || !check_fn) {
+        log_error(LOG_MISCONFIG, "htaccess-register", sn, rq,
+                  "missing required parameter (directive, function, or check_fn)");
+        return REQ_ABORTED;
+    }
 
     if (!(item = (command *)MALLOC(sizeof(command))))
     {

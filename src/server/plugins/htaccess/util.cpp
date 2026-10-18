@@ -82,10 +82,14 @@ int htaccess_is_matchexp(char *str) {
 void htaccess_no2slash(char *name) {
     register int x,y;
 
-    for(x=0; name[x]; x++)
-        if(x && (name[x-1] == '/') && (name[x] == '/'))
+    for(x=0; name[x]; ) {
+        if(x && (name[x-1] == '/') && (name[x] == '/')) {
             for(y=x+1;name[y-1];y++)
                 name[y-1] = name[y];
+        } else {
+            x++;
+        }
+    }
 }
 
 int htaccess_count_dirs(char *path) {
@@ -103,7 +107,7 @@ void htaccess_strcpy_dir(char *d, char *s) {
    for(x=0;s[x];x++)
        d[x] = s[x];
 
-   if(s[x-1] != '/') d[x++] = '/';
+   if(!x || s[x-1] != '/') d[x++] = '/';
    d[x] = '\0';
 }
 
@@ -137,19 +141,19 @@ void htaccess_getword(char *word, char *line, char stop) {
 void htaccess_cfg_getword(char *word, char *line) {
     int x=0,y;
     
-    for(x=0;line[x] && isspace(line[x]);x++);
+    for(x=0;line[x] && isspace((unsigned char)line[x]);x++);
     y=0;
     while(1) {
         if(!(word[y] = line[x]))
             break;
-        if(isspace(line[x]))
+        if(isspace((unsigned char)line[x]))
             if((!x) || (line[x-1] != '\\'))
                 break;
         if(line[x] != '\\') ++y;
         ++x;
     }
     word[y] = '\0';
-    while(line[x] && isspace(line[x])) ++x;
+    while(line[x] && isspace((unsigned char)line[x])) ++x;
     for(y=0; (line[y] = line[x]); ++x,++y);
 }
 
@@ -178,7 +182,7 @@ int htaccess_cfg_getline (char* s, int n, filebuffer *fp)
     }
   
     /* Get rid of the whitespace */
-    for(t = s; isspace(*t); ++t)
+    for(t = s; isspace((unsigned char)*t); ++t)
         /* nothing */;
     if(t != s) {
         while(*t)
@@ -247,7 +251,7 @@ void ncsa_uudecode(char *bufcoded, unsigned char *bufplain, int outbufsize) {
      * the output buffer, adjust the number of input bytes downwards.
      */
     bufin = bufcoded;
-    while(pr2six[*(bufin++)] <= 63);
+    while(pr2six[(unsigned char)*(bufin++)] <= 63);
     nprbytes = bufin - bufcoded - 1;
     nbytesdecoded = ((nprbytes+3)/4) * 3;
     if(nbytesdecoded > outbufsize) {
@@ -258,17 +262,17 @@ void ncsa_uudecode(char *bufcoded, unsigned char *bufplain, int outbufsize) {
     
     while (nprbytes > 0) {
         *(bufout++) = 
-            (unsigned char) (pr2six[*bufin] << 2 | pr2six[bufin[1]] >> 4);
+            (unsigned char) (pr2six[(unsigned char)*bufin] << 2 | pr2six[(unsigned char)bufin[1]] >> 4);
         *(bufout++) = 
-            (unsigned char) (pr2six[bufin[1]] << 4 | pr2six[bufin[2]] >> 2);
+            (unsigned char) (pr2six[(unsigned char)bufin[1]] << 4 | pr2six[(unsigned char)bufin[2]] >> 2);
         *(bufout++) = 
-            (unsigned char) (pr2six[bufin[2]] << 6 | pr2six[bufin[3]]);
+            (unsigned char) (pr2six[(unsigned char)bufin[2]] << 6 | pr2six[(unsigned char)bufin[3]]);
         bufin += 4;
         nprbytes -= 4;
     }
     
     if(nprbytes & 03) {
-        if(pr2six[bufin[-2]] > 63)
+        if(pr2six[(unsigned char)bufin[-2]] > 63)
             nbytesdecoded -= 2;
         else
             nbytesdecoded -= 1;
@@ -280,7 +284,7 @@ void ncsa_uudecode(char *bufcoded, unsigned char *bufplain, int outbufsize) {
  * basically it just forces the string to consist of dots or digits */
 int htaccess_is_ip(const char *host)
 {
-    while ((*host == '.') || isdigit(*host))
+    while ((*host == '.') || isdigit((unsigned char)*host))
         host++;
     return (*host == '\0');
 }

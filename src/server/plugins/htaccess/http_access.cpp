@@ -82,36 +82,43 @@ int htaccess_in_domain(char *domain, char *what) {
  *       check_allow()
  */
 int htaccess_in_ip(char *allowfrom, char *where) {
+    char buf[MAX_STRING_LEN];
     char * s;
-    unsigned long mask = 0; /* allow all bits */
+    PRUint32 mask = 0; /* allow all bits */
+    PRUint32 allowedip = 0;
+    PRUint32 remoteip = 0;
 
-    unsigned long allowedip = 0;
-    unsigned long remoteip = 0;
+    if (!allowfrom || !where)
+        return 0;
 
-    remoteip = inet_addr(where);
+    htaccess_lim_strcpy(buf, allowfrom, sizeof(buf));
+    remoteip = (PRUint32)inet_addr(where);
 
-    if ((s = strchr(allowfrom, '/'))) { 
+    if ((s = strchr(buf, '/'))) {
 
         *s++ = '\0';
 
         /* mask is the form /a.b.c.d */
         if (strchr(s, '.')) {
-            mask = inet_addr(s);
+            mask = (PRUint32)inet_addr(s);
         } else {
             /* assume it is /nnn */
-            mask = atoi(s);
-            mask = 0xFFFFFFFFUL << (32 - mask);
-            mask = htonl(mask);
+            int bits = atoi(s);
+            if (bits <= 0)
+                mask = 0;
+            else if (bits >= 32)
+                mask = 0xFFFFFFFFU;
+            else
+                mask = htonl(0xFFFFFFFFU << (32 - bits));
         }
-        allowedip = (allowedip & mask);
-        allowedip = inet_addr(allowfrom);
+        allowedip = ((PRUint32)inet_addr(buf)) & mask;
     } else {
         /* it is either an IP address or the form a.b.c. */
         int shift = 24;
-        char *s, *t;
+        char *t;
         int octet;
 
-        s = allowfrom;
+        s = buf;
         mask = 0;
 
         while (*s) {
@@ -120,24 +127,29 @@ int htaccess_in_ip(char *allowfrom, char *where) {
             /* This should never match, but just in case, this will prevent
              * a server hang because the loop will never exit otherwise.
              */
-            if ((!isdigit(*t)) && (*t != '.'))
+            if ((!isdigit((unsigned char)*t)) && (*t != '.'))
                 return 0;
 
-            while (isdigit(*t))
+            while (isdigit((unsigned char)*t))
                 ++t;
 
             if (*t == '.')
                 *t++ = 0;
 
-            octet = atoi(s);
+            if (shift < 0)
+                return 0;
 
-            allowedip |= octet << shift;
-            mask |= 0xFFUL << shift;
+            octet = atoi(s);
+            if (octet < 0 || octet > 255)
+                return 0;
+
+            allowedip |= ((PRUint32)octet) << shift;
+            mask |= 0xFFU << shift;
             s = t;
             shift -= 8;
         }
-        allowedip = ntohl(allowedip);
-        mask = ntohl(mask);
+        allowedip = htonl(allowedip);
+        mask = htonl(mask);
     }
 
     if ((remoteip & mask) == allowedip)
@@ -269,18 +281,18 @@ int htaccess_evaluate_access(char *p, int isdir, int methnum,
 
     len = strlen(p);
 
-    if ((path = (char *)MALLOC(len + 1)) == NULL) {
+    if ((path = (char *)MALLOC(len + 2)) == NULL) {
         log_error(LOG_FAILURE,"htaccess_evaluate_access", sn, rq, "out of memory");
         return REQ_ABORTED;
     }
-    if ((root_dir = (char *)MALLOC(len + 1)) == NULL) {
+    if ((root_dir = (char *)MALLOC(len + 2)) == NULL) {
         log_error(LOG_FAILURE,"htaccess_evaluate_access", sn, rq, "out of memory");
         FREE(path);
         return REQ_ABORTED;
     }
 
     if(isdir) htaccess_strcpy_dir(path,p);
-    else htaccess_lim_strcpy(path,p, MAX_STRING_LEN);
+    else htaccess_lim_strcpy(path,p, len + 1);
 
     htaccess_no2slash(path);
 
@@ -293,7 +305,7 @@ int htaccess_evaluate_access(char *p, int isdir, int methnum,
         access_name = DEFAULT_ACCESS_FNAME;
 
     /* Allocate space to store "/" and null apart from htaccess file name */
-    if ((full_filename = (char *)MALLOC(len + strlen(access_name) + 2)) == NULL) {
+    if ((full_filename = (char *)MALLOC(len + strlen(access_name) + 3)) == NULL) {
         log_error(LOG_FAILURE,"htaccess_evaluate_access", sn, rq, "out of memory");
         FREE(path);
         FREE(root_dir);
@@ -315,12 +327,20 @@ int htaccess_evaluate_access(char *p, int isdir, int methnum,
 
             /* don't create a context unless there is a file to parse */
             if ((f=htaccess_cfg_open(full_filename))) {
+                int parse_rv;
 		if (!init) {
                     ctxt = _htaccess_newctxt(pb, sn, rq);
                     init=1;
                 }
-                htaccess_parse_access_dir(f,-1,0,root_dir,full_filename,ctxt);
+                parse_rv = htaccess_parse_access_dir(f,-1,0,root_dir,full_filename,ctxt);
                 htaccess_cfg_close(f);
+                if (parse_rv != REQ_PROCEED) {
+                    _htaccess_freectxt(ctxt);
+                    FREE(path);
+                    FREE(root_dir);
+                    FREE(full_filename);
+                    return REQ_ABORTED;
+                }
             }
         }
     }
@@ -385,6 +405,9 @@ htaccess_evaluate(pblock *pb, Session *sn, Request *rq)
       case ACCESS_OK:
         return REQ_PROCEED;
 
+      case REQ_ABORTED:
+        return REQ_ABORTED;
+
       case ACCESS_FORBIDDEN:
       default:
         protocol_status(sn, rq, PROTOCOL_FORBIDDEN, NULL);
@@ -447,24 +470,29 @@ _htaccess_newctxt(pblock *pb, Session *sn, Request *rq)
 static void
 _htaccess_freectxt(htaccess_context_s *ctxt)
 {
-    int x, y;
+    if (!ctxt)
+        return;
 
-    for(x=0;x<ctxt->num_sec;x++) {
-        if(ctxt->user_check_fn)
-            FREE(ctxt->user_check_fn);
-        if(ctxt->group_check_fn)
-            FREE(ctxt->group_check_fn);
-        if (ctxt->auth_authdb) {
-            htaccess_kill_group(ctxt);
-        }
-        if (ctxt->auth_grplist) {
-            FREE(ctxt->auth_grplist);
-        }
-        if (ctxt->auth_grplfile) {
-            FREE(ctxt->auth_grplfile);
-        }
+    if (ctxt->user_check_fn) {
+        FREE(ctxt->user_check_fn);
+        ctxt->user_check_fn = NULL;
+    }
+    if (ctxt->group_check_fn) {
+        FREE(ctxt->group_check_fn);
+        ctxt->group_check_fn = NULL;
+    }
+    if (ctxt->auth_authdb) {
+        htaccess_kill_group(ctxt);
+    }
+    if (ctxt->auth_grplist) {
+        FREE(ctxt->auth_grplist);
+        ctxt->auth_grplist = NULL;
+    }
+    if (ctxt->auth_grplfile) {
+        FREE(ctxt->auth_grplfile);
+        ctxt->auth_grplfile = NULL;
     }
     htaccess_secflush(ctxt->sec);
-    FREE(ctxt->sec);
+    htaccess_freesec(ctxt->sec);
     FREE(ctxt);
 }
