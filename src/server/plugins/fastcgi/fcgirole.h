@@ -82,8 +82,8 @@ private:
     void initFilter();
     char *filterApp;
     SYS_FILE filterFd;
-    PRFileInfo& filterFileInfo;
-    PRUint32 filterFileSize;
+    PRFileInfo64& filterFileInfo;
+    PRUint64 filterFileSize;
 };
 
 class AuthRole: public BaseRole {

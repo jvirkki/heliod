@@ -154,7 +154,8 @@ void FcgiServerConfig::init(pblock *pb) {
 
     //check app-path and bind-path
     formatBindPath();
-    log_ereport(LOG_VERBOSE, procInfo.bindPath);
+    if(procInfo.bindPath)
+        log_ereport(LOG_VERBOSE, "%s", procInfo.bindPath);
 
     // check for any errors post format
     if(lastError != NO_FCGI_ERROR)
@@ -163,7 +164,7 @@ void FcgiServerConfig::init(pblock *pb) {
     if(procInfo.bindPath) {
         if(getNetAddr(procInfo.bindPath, &(procInfo.addr)) != PR_SUCCESS) {
             lastError = INVALID_BIND_PATH;
-            log_ereport(LOG_MISCONFIG, getError());
+            log_ereport(LOG_MISCONFIG, "%s", getError());
             return;
         }
     }
@@ -455,15 +456,16 @@ void FcgiServerConfig::init(const FcgiServerConfig& config) {
     procInfo.execPath = config.procInfo.execPath ? PL_strdup(config.procInfo.execPath) : NULL;
     procInfo.bindPath = config.procInfo.bindPath ? PL_strdup(config.procInfo.bindPath) : NULL;
     procInfo.addr = config.procInfo.addr;
-    procInfo.argv0 = PL_strdup(config.procInfo.argv0);
-    procInfo.minProcesses = PL_strdup(config.procInfo.minProcesses);
-    procInfo.maxProcesses = PL_strdup(config.procInfo.maxProcesses);
-    procInfo.chRoot = PL_strdup(config.procInfo.chRoot) ? config.procInfo.chRoot : NULL;
-    procInfo.chDir = PL_strdup(config.procInfo.chDir) ? config.procInfo.chDir : NULL;
+    procInfo.servAddr = NULL;
+    procInfo.argv0 = config.procInfo.argv0 ? PL_strdup(config.procInfo.argv0) : NULL;
+    procInfo.minProcesses = config.procInfo.minProcesses ? PL_strdup(config.procInfo.minProcesses) : NULL;
+    procInfo.maxProcesses = config.procInfo.maxProcesses ? PL_strdup(config.procInfo.maxProcesses) : NULL;
+    procInfo.chRoot = config.procInfo.chRoot ? PL_strdup(config.procInfo.chRoot) : NULL;
+    procInfo.chDir = config.procInfo.chDir ? PL_strdup(config.procInfo.chDir) : NULL;
     procInfo.userName = config.procInfo.userName ? PL_strdup(config.procInfo.userName) : NULL;
     procInfo.groupName = config.procInfo.groupName ? PL_strdup(config.procInfo.groupName) : NULL;
     procInfo.priority = config.procInfo.priority ? PL_strdup(config.procInfo.priority) : NULL;
-    procInfo.listenQueueDepth = PL_strdup(config.procInfo.listenQueueDepth);
+    procInfo.listenQueueDepth = config.procInfo.listenQueueDepth ? PL_strdup(config.procInfo.listenQueueDepth) : NULL;
     retries = config.retries;
     poll_timeout = config.poll_timeout;
     connect_timeout = config.connect_timeout;
@@ -471,8 +473,8 @@ void FcgiServerConfig::init(const FcgiServerConfig& config) {
     keep_alive_timeout = config.keep_alive_timeout;
     keepAliveConnection = config.keepAliveConnection;
     procInfo.restartDelay = config.procInfo.restartDelay ? PL_strdup(config.procInfo.restartDelay) : NULL;
-    procInfo.restartOnExit = PL_strdup(config.procInfo.restartOnExit);
-    procInfo.numFailures = PL_strdup(config.procInfo.numFailures);
+    procInfo.restartOnExit = config.procInfo.restartOnExit ? PL_strdup(config.procInfo.restartOnExit) : NULL;
+    procInfo.numFailures = config.procInfo.numFailures ? PL_strdup(config.procInfo.numFailures) : NULL;
     procInfo.rlimit_as = config.procInfo.rlimit_as ? PL_strdup(config.procInfo.rlimit_as) : NULL;
     procInfo.rlimit_core = config.procInfo.rlimit_core ? PL_strdup(config.procInfo.rlimit_core) : NULL;
     procInfo.rlimit_cpu = config.procInfo.rlimit_cpu ? PL_strdup(config.procInfo.rlimit_cpu) : NULL;
@@ -519,7 +521,7 @@ void FcgiServerConfig::destroy() {
             procInfo.bindPath = NULL;
         }
         if(procInfo.servAddr) {
-            delete (procInfo.servAddr);
+            free(procInfo.servAddr);
             procInfo.servAddr = NULL;
         }
         if(procInfo.argv0) {
@@ -640,8 +642,12 @@ int FcgiServerConfig::operator==(pblock *pb) const {
         if(udsName && bindPathSpecified) {
             match = strmatch((procInfo.bindPath + strlen(fcgiTmpDir) + 1), param2);
         } else {
-           strmatch(procInfo.bindPath, param2);
+            match = strmatch(procInfo.bindPath, param2);
         }
+    }
+
+    if (!bindPathSpecified && param2) {
+        FREE(param2);
     }
 
     return match;

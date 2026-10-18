@@ -335,7 +335,7 @@ PRStatus FilterRole::process(FcgiServerChannel& channel)
     PRUint64 cl = request.contentLength;
     PRBool clientRead = PR_FALSE;
     PRBool stdinEndSent = PR_FALSE;
-    PRUint32 filterFileBytesRead = 0;
+    PRUint64 filterFileBytesRead = 0;
     PRBool clientDataSent = PR_FALSE;
 
     if (cl > 0) {

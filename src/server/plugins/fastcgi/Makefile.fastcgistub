@@ -60,6 +60,10 @@ EXE_TARGET=Fastcgistub
 EXE_OBJS+=util fcgiprocess fastcgistub
 util.cpp_CC_FLAGS += -fPIC
 EXE_LIBS=nsprwrap support
+LD_RPATH=$(RPATH_ORIGIN):$(RPATH_ORIGIN)/../lib$(PLATFORM_SUBDIR_SUFFIX):$(RPATH_ORIGIN)/../../lib$(PLATFORM_SUBDIR_SUFFIX):$(RPATH_ORIGIN)/../../../lib$(PLATFORM_SUBDIR_SUFFIX)
+ifeq ($(OS_ARCH),Linux)
+LOCAL_LD_OPTS += -Wl,--disable-new-dtags
+endif
 
 SHIP_PLUGIN_BINARIES=$(EXE_TARGET)
 

@@ -70,7 +70,7 @@ private:
     NSString httpHeader;
     FcgiRequest *request;
     PRUint8 fcgiRole;
-    PRUint32 authHeaderPrefixLen;
+    size_t authHeaderPrefixLen;
 
 };
 #endif //FCGIPARSER_H

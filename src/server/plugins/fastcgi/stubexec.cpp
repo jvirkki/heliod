@@ -65,8 +65,8 @@ extern PRBool platform64;
 
 // Constructor
 StubExec::StubExec(const FcgiServerConfig *config, Session *sn, Request *rq)
-    : fcgiConfig(config), requestMsg(NULL), stubFd(NULL), _sn(sn), _rq(rq),
-      args(NULL)
+    : fcgiConfig(config), requestMsg(NULL), requestMsgSize(0), stubFd(NULL),
+      stubSemName(NULL), _sn(sn), _rq(rq), args(NULL)
 {
     lastError = NO_FCGI_ERROR;
     int nameLen = strlen(FCGI_STUB_NAME);
@@ -87,7 +87,7 @@ StubExec::StubExec(const FcgiServerConfig *config, Session *sn, Request *rq)
     // stub bind path : <tmp dir>/"fastcgistub_"<parent proc id>"
     PR_snprintf(stubBindPath, len, "%s%c%s_%s", fcgiConfig->fcgiTmpDir, FILE_PATHSEP, FCGI_STUB_NAME, parentId);
     if (getNetAddr(stubBindPath, &addr) != PR_SUCCESS) {
-        log_error(LOG_VERBOSE, LOG_FUNCTION_NAME, _sn, _rq, getError());
+        log_error(LOG_VERBOSE, LOG_FUNCTION_NAME, _sn, _rq, "%s", getError());
         lastError = STUB_CONNECT_FAILURE;
     }
 #else
@@ -106,6 +106,11 @@ StubExec::~StubExec() {
         FREE(stubBindPath);
         stubBindPath = NULL;
      }
+    if (requestMsg) {
+        FREE(requestMsg);
+        requestMsg = NULL;
+        requestMsgSize = 0;
+    }
     if (args) {
 #ifdef XP_UNIX
         fcgi_util_env_free(args);
@@ -242,14 +247,17 @@ PRStatus StubExec::checkAccess() {
 
         // check permissions on dirFcgistub, the parent directory of Fastcgistub
         if ( stat(dirFcgistub, &st) ) {
+            FREE(dirFcgistub);
             lastError = STUB_STAT_FAILURE;
             goto res_failure;
         } else if ( st.st_uid != getuid() ) {
             // we don't own the Cgistub parent directory
+            FREE(dirFcgistub);
             lastError = STUB_NO_PERM;
             goto res_failure;
         } else if ( st.st_mode & (S_IWGRP | S_IWOTH) ) {
             // someone other than us can access the Cgistub parent directory
+            FREE(dirFcgistub);
             lastError = STUB_NO_PERM;
             goto res_failure;
         }
@@ -287,6 +295,31 @@ retryStubStart:
     Sem_grab(stubSem);
     PRFileDesc *stubPidFd = PR_Open(stubPidFileName, PR_WRONLY|PR_CREATE_FILE|PR_EXCL, 0600);
     if (stubPidFd == NULL) {
+#ifdef XP_UNIX
+        PRFileDesc *existingPidFd = PR_Open(stubPidFileName, PR_RDONLY, 0);
+        if (existingPidFd != NULL) {
+            char pidBuf[32] = "";
+            PRInt32 n = PR_Read(existingPidFd, pidBuf, sizeof(pidBuf) - 1);
+            PR_Close(existingPidFd);
+            if (n > 0) {
+                pidBuf[n] = '\0';
+                PidType existingPid = atoi(pidBuf);
+                if (existingPid > 0) {
+                    if (kill(existingPid, 0) == 0) {
+                        // Stub was already started by another thread; connect to it.
+                        Sem_release(stubSem);
+                        return connect();
+                    } else if (errno == ESRCH && retries) {
+                        // Stale pid file from a dead stub process; remove and retry once.
+                        PR_Delete(stubPidFileName);
+                        retries = PR_FALSE;
+                        Sem_release(stubSem);
+                        goto retryStubStart;
+                    }
+                }
+            }
+        }
+#endif
         lastError = STUB_PID_FILE_CREATE_FAILURE;
         if (retryOption == PR_FALSE)
             logError();
@@ -361,11 +394,12 @@ retryStubStart:
         execv(stubExecPath, args);
         // if we are here, then exec failed.
         PluginError errVal = STUB_EXEC_FAILURE;
-        PR_Write(PR_STDIN, (char *)&errVal, sizeof(PluginError));
+        write(STDIN_FILENO, (char *)&errVal, sizeof(PluginError));
         _exit(-1);
     }
 #endif  // XP_WIN32
     PR_Close(writePipe);
+    writePipe = NULL;
     bytesRead = PR_Read(readPipe, msg, sizeof(PluginError));
     if (bytesRead > 0) {
         if (lastError != NO_FCGI_ERROR) {
@@ -451,6 +485,7 @@ PRStatus StubExec::buildServerRequest(RequestMessageType type) {
                                 len_vs_id, fcgiConfig->vsId );
     }
     if ((totlen != (pHeader - (char*)pds)) || (totlen != (pHeader - pipeBuf))) {
+        FREE(pipeBuf);
         lastError = BUILD_REQ_ERROR;
         logError();
         return PR_FAILURE;
@@ -461,6 +496,9 @@ PRStatus StubExec::buildServerRequest(RequestMessageType type) {
     //
     pds->reqMsgLen = totlen;
     requestMsgSize = totlen;
+    if (requestMsg) {
+        FREE(requestMsg);
+    }
     requestMsg = pipeBuf;
 
     return PR_SUCCESS;
@@ -712,6 +750,7 @@ PRStatus StubExec::buildServerStartRequest() {
 
 
     if ((totlen != (pHeader - (char*)pds)) || (totlen != (pHeader - pipeBuf))) {
+        FREE(pipeBuf);
         lastError = BUILD_REQ_ERROR;
         logError();
         return PR_FAILURE;
@@ -722,6 +761,9 @@ PRStatus StubExec::buildServerStartRequest() {
     //
     pds->reqMsgLen = totlen;
     requestMsgSize = totlen;
+    if (requestMsg) {
+        FREE(requestMsg);
+    }
     requestMsg = pipeBuf;
 
     return PR_SUCCESS;
@@ -761,8 +803,8 @@ PRStatus StubExec::sendRequest(RequestMessageType msgType) {
             return PR_FAILURE;
     }
 
-    PRUint32 bytesSent = 0;
-    PRUint16 bytesRead = 0;
+    PRInt32 bytesSent = 0;
+    PRInt32 bytesRead = 0;
 #ifdef XP_UNIX
     bytesSent = PR_Send(stubFd, requestMsg, requestMsgSize, 0, PR_INTERVAL_NO_TIMEOUT);
 #else
@@ -772,7 +814,7 @@ PRStatus StubExec::sendRequest(RequestMessageType msgType) {
         return PR_FAILURE;
     }
 #endif // XP_UNIX
-    if (bytesSent < sizeof(requestMsg)) {
+    if (bytesSent < requestMsgSize) {
         lastError = REQUEST_SEND_FAILURE;
         logError();
         return PR_FAILURE;

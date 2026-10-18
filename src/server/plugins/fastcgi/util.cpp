@@ -88,6 +88,10 @@ char *host_port_suffix(char *h) {
 //-----------------------------------------------------------------------------
 
 PRStatus getNetAddr(const char *host, PRNetAddr *addr) {
+    if (!host || !addr) {
+        PL_strcpy(errorMsg, "null host or address in bind-path");
+        return PR_FAILURE;
+    }
     PRStatus rv = PR_SUCCESS;
     memset(addr, 0, sizeof(*addr));
 
@@ -99,10 +103,16 @@ PRStatus getNetAddr(const char *host, PRNetAddr *addr) {
     // uds name
     if(!p) {
 #ifndef XP_WIN32
+        if (strlen(h) == 0 || strlen(h) >= sizeof(addr->local.path)) {
+            PL_strcpy(errorMsg, "invalid or overly long UDS bind-path");
+            PL_strfree(h);
+            return PR_FAILURE;
+        }
         addr->local.family = PR_AF_LOCAL;
         strcpy(addr->local.path, h);
 #else
         addr = NULL;
+        PL_strfree(h);
         return PR_SUCCESS;
 #endif  // XP_WIN32
     } else {
@@ -114,6 +124,7 @@ PRStatus getNetAddr(const char *host, PRNetAddr *addr) {
             if(*p == '\0') {
                 // port is empty
                 PL_strcpy(errorMsg, "port is missing in the bind-path");
+                PL_strfree(h);
                 return PR_FAILURE;
             }
 
@@ -131,12 +142,14 @@ PRStatus getNetAddr(const char *host, PRNetAddr *addr) {
 
             if(invalidPort) {
                 PR_snprintf(errorMsg, 256, "invalid port %s specified in the bind-path", startP);
+                PL_strfree(h);
                 return PR_FAILURE;
             }
 
             port = atoi(startP);
             if(port < 1 || port > 65535) {
                 PR_snprintf(errorMsg, 256, "port %s specified in the bind-path is out of range", startP);
+                PL_strfree(h);
                 return PR_FAILURE;
             }
         }
@@ -158,6 +171,8 @@ PRStatus getNetAddr(const char *host, PRNetAddr *addr) {
                 PR_snprintf(errorMsg, 256, "invalid host %s specified in the bind-path", h);
                 printf("invalid host is specified in the bind-path\n");
             }
+        } else {
+            PR_snprintf(errorMsg, 256, "invalid host %s specified in the bind-path", h);
         }
     }
 
@@ -167,8 +182,13 @@ PRStatus getNetAddr(const char *host, PRNetAddr *addr) {
 }
 
 PRStatus getSockAddr(const char *host, struct sockaddr **addr, int *localAddr ) {
+    if (!host || !addr || !localAddr) {
+        PL_strcpy(errorMsg, "null host or address in bind-path");
+        return PR_FAILURE;
+    }
     PRStatus rv = PR_SUCCESS;
-     *localAddr = 0;
+    *addr = NULL;
+    *localAddr = 0;
     // Extract the port number
     int port = 0;
     char *h = PL_strdup(host);
@@ -178,6 +198,11 @@ PRStatus getSockAddr(const char *host, struct sockaddr **addr, int *localAddr ) 
     if(!p) {
         *localAddr = 1;
 #ifndef XP_WIN32
+        if (strlen(h) == 0 || strlen(h) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+            PL_strcpy(errorMsg, "invalid or overly long UDS bind-path");
+            PL_strfree(h);
+            return PR_FAILURE;
+        }
         struct sockaddr_un *udsSock = (struct sockaddr_un *)malloc(sizeof(struct sockaddr_un));
         memset((char *)udsSock, 0, sizeof(struct sockaddr_un));
         udsSock->sun_family = PR_AF_LOCAL;
@@ -185,6 +210,7 @@ PRStatus getSockAddr(const char *host, struct sockaddr **addr, int *localAddr ) 
         *addr = (struct sockaddr *)udsSock;
 #else
         PL_strcpy(errorMsg, "UDS is not supported on Windows");
+        PL_strfree(h);
         return PR_FAILURE;  // no UDS on Windows
 #endif  // XP_WIN32
 
@@ -197,6 +223,7 @@ PRStatus getSockAddr(const char *host, struct sockaddr **addr, int *localAddr ) 
             if(*p == '\0') {
                 // port is empty
                 PL_strcpy(errorMsg, "port is missing in the bind-path");
+                PL_strfree(h);
                 return PR_FAILURE;
             }
 
@@ -213,12 +240,14 @@ PRStatus getSockAddr(const char *host, struct sockaddr **addr, int *localAddr ) 
 
             if(invalidPort) {
                 PR_snprintf(errorMsg, 256, "invalid port %s specified in the bind-path", startP);
+                PL_strfree(h);
                 return PR_FAILURE;
             }
 
             port = atoi(startP);
             if(port < 1 || port > 65535) {
                 PR_snprintf(errorMsg, 256, "port %s specified in the bind-path is out of range", startP);
+                PL_strfree(h);
                 return PR_FAILURE;
             }
         }
@@ -236,6 +265,8 @@ PRStatus getSockAddr(const char *host, struct sockaddr **addr, int *localAddr ) 
 
         if ( !pHostEnt ) {
             PR_snprintf(errorMsg, 256, "invalid host %s specified in the bind-path", h);
+            free(servAddr);
+            PL_strfree(h);
             return PR_FAILURE;
         }
 

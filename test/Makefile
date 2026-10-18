@@ -215,6 +215,17 @@ test-fastcgi-h2:
 	$(BUILD_ROOT)/test/fastcgi_h2_smoke.sh $(realpath $(WORK_ROOT))
 	@echo "----- FastCGI-over-HTTP/2 test finished -----"
 
+# FastCGI stub process (Fastcgistub) lifecycle and ASAN stress test: compiles
+# Fastcgistub with AddressSanitizer + UndefinedBehaviorSanitizer and verifies
+# CLI/framing edge cases, invalid bind paths, nonexistent executables,
+# concurrent duplicate RQ_START bursts, RQ_OVERLOAD, backend process death and
+# automatic respawn, and repeated server restart cycles.
+test-fastcgi-stub:
+	@echo "----- Running FastCGI stub lifecycle and ASAN test -----"
+	ulimit -n 4096
+	$(BUILD_ROOT)/test/fastcgi_stub_smoke.sh $(realpath $(WORK_ROOT))
+	@echo "----- FastCGI stub lifecycle and ASAN test passed -----"
+
 # Per-connection request cap test: verifies max-requests-per-connection
 # across classic HTTP/1.1, event HTTP/1.1, HTTP/2 GOAWAY, per-listener overrides,
 # and /perfdump.

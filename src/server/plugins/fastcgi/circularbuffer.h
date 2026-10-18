@@ -119,7 +119,7 @@ CircularBuffer::CircularBuffer(char *buffer, int size)
 CircularBuffer::~CircularBuffer()
 {
     if (_allocated) {
-        delete _buffer;
+        delete [] _buffer;
         _buffer = NULL;
     }
 }

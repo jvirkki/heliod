@@ -47,12 +47,13 @@ public:
     ~FcgiProcess();
     void initProcess();
     int getNumChildren() { return (children ? children->length() : 0); }
-    static FcgiProcess *lookupChildPid(GenericList procList, PidType p);
+    static FcgiProcess *lookupChildPid(GenericList& procList, PidType p);
     int operator==(const FcgiProcess& right) const;
     int operator!=(const FcgiProcess& right) const;
     PRStatus addChild(PidType cPid);
     void removeChild(PidType cPid);
     FileDescPtr getClientFd() { return (clientFd ? clientFd : NULL); }
+    void closeClientFd();
     void addVsId(char *vsid);
     void removeVsId(char *vsid);
     PRBool containsVsId(char *vsid);

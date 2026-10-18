@@ -89,9 +89,12 @@ using namespace std;
 
 //global vars
 static GenericList processList; //list of processes
-static PRLock *lockProcessList = PR_NewLock();
-static PRLock *lockDeadChildList = PR_NewLock();
+static PRLock *lockProcessList = NULL;
+static PRLock *lockDeadChildList = NULL;
 FileDescPtr stubFd = NULL;
+#ifdef XP_UNIX
+static int stubNativeFd = -1;
+#endif
 PRNetAddr stubAddr;
 char *stubBindPath  = NULL;
 PluginError lastError;
@@ -99,7 +102,7 @@ char *stubName = NULL;
 PRBool verbose = PR_FALSE;
 FILE *stubLogFd = NULL;
 char *stubLogFileName = NULL;
-PRBool stubStopSignal = PR_FALSE;
+volatile sig_atomic_t stubStopSignal = 0;
 #ifdef XP_WIN32
 HANDLE stubStopEventHandle = NULL;
 #endif //XP_WIN32
@@ -130,7 +133,7 @@ static void printMsg(const char *msg) {
         if(msg)
             fprintf(stubLogFd, "%s\n", msg);
         else
-            (stubLogFd, "NULL\n");
+            fprintf(stubLogFd, "NULL\n");
         fflush(stubLogFd);
     }
 }
@@ -165,23 +168,50 @@ void sendResponseToStubRequest(FileDescPtr fd, PluginError reqLastError) {
 
 NSPR_BEGIN_EXTERN_C
 void handleExit() {
-    PR_Lock(lockProcessList);
-    int len = processList.length();
-
-    FcgiProcess *proc;
-    for(int i=0; i<processList.length(); i++) {
-        proc = (FcgiProcess *)processList[i];
-        delete proc;
-        proc = NULL;
+    static PRBool exitHandled = PR_FALSE;
+    if (exitHandled) {
+        return;
     }
-    processList.flush();
-    PR_Unlock(lockProcessList);
+    exitHandled = PR_TRUE;
 
-    PR_DestroyLock(lockProcessList);
-    lockProcessList = NULL;
+    if (monThread || childHandlerThread) {
+        stopStubThread();
+    }
+
+    if (lockProcessList) {
+        PR_Lock(lockProcessList);
+        FcgiProcess *proc;
+        for(int i=0; i<processList.length(); i++) {
+            proc = (FcgiProcess *)processList[i];
+            if (proc) {
+                proc->closeClientFd();
+                delete proc;
+            }
+        }
+        processList.flush();
+        PR_Unlock(lockProcessList);
+
+        PR_DestroyLock(lockProcessList);
+        lockProcessList = NULL;
+    }
+
+    if (lockDeadChildList) {
+        PR_DestroyLock(lockDeadChildList);
+        lockDeadChildList = NULL;
+    }
+
+    if (condVar) {
+        PR_DestroyCondVar(condVar);
+        condVar = NULL;
+    }
+    if (condVarLock) {
+        PR_DestroyLock(condVarLock);
+        condVarLock = NULL;
+    }
 
     if(stubFd) {
 #ifdef XP_UNIX
+        stubNativeFd = -1;
         PR_Close(stubFd);
 #else
         CloseHandle(stubFd);
@@ -234,7 +264,7 @@ PRStatus startProcesses(FcgiProcess *proc, int numProcs, PRBool lifecycleCall = 
     if(numProcs > 0) {
         for(i = 0; i < numProcs; i++) {
             if(proc->execFcgiProgram(lifecycleCall) != NO_FCGI_ERROR) {
-                if(verbose) {
+                if(verbose && stubLogFd) {
                     fprintf(stubLogFd, "failed to exec application %s\n",
                         proc->procInfo.execPath);
                     fflush(stubLogFd);
@@ -244,9 +274,11 @@ PRStatus startProcesses(FcgiProcess *proc, int numProcs, PRBool lifecycleCall = 
         } //for
     }
 
-    PR_Lock(condVarLock);
-    PR_NotifyAllCondVar(condVar);
-    PR_Unlock(condVarLock);
+    if (condVarLock && condVar) {
+        PR_Lock(condVarLock);
+        PR_NotifyAllCondVar(condVar);
+        PR_Unlock(condVarLock);
+    }
 
     return PR_SUCCESS;
 }
@@ -278,18 +310,33 @@ static void setupStubSignalDisposition() {
  */
 #ifdef XP_UNIX
 void cleanupEnvironment(void) {
-    int     fd;
-    int     fdlimit;
-    struct  sigaction sa;
+    int closed = 0;
+    int logFdNum = stubLogFd ? fileno(stubLogFd) : -1;
 
-    /*
-     *  first, close all our potentially nasty inherited fds
-     *  leave stdin, stdout & ..err
-     */
-    fdlimit = sysconf( _SC_OPEN_MAX );
-    for ( fd = STDERR_FILENO+1; fd < fdlimit; fd++ ) {
-    if(!stubLogFd || (fd != fileno(stubLogFd)))
-            close( fd );
+#if defined(Linux) || defined(LINUX)
+    extern int close_range(unsigned int first, unsigned int last, int flags);
+    if (logFdNum <= STDERR_FILENO) {
+        if (close_range(STDERR_FILENO + 1, ~0U, 0) == 0) {
+            closed = 1;
+        }
+    } else {
+        int r1 = (logFdNum > STDERR_FILENO + 1) ? close_range(STDERR_FILENO + 1, (unsigned int)(logFdNum - 1), 0) : 0;
+        int r2 = close_range((unsigned int)(logFdNum + 1), ~0U, 0);
+        if (r1 == 0 && r2 == 0) {
+            closed = 1;
+        }
+    }
+#endif
+
+    if (!closed) {
+        int fd;
+        int fdlimit = sysconf(_SC_OPEN_MAX);
+        if (fdlimit < 0 || fdlimit > 65536)
+            fdlimit = 65536;
+        for (fd = STDERR_FILENO + 1; fd < fdlimit; fd++) {
+            if (fd != logFdNum)
+                close(fd);
+        }
     }
 
     setupStubSignalDisposition();
@@ -318,14 +365,14 @@ static void processExit(FcgiProcess *proc, int status, pid_t pid) {
      * alive.
      */
      if(WIFEXITED(status) && (WEXITSTATUS(status) != 0)) {
-         if(verbose) {
+         if(verbose && stubLogFd) {
              fprintf(stubLogFd, "FastCGI process %s exited with the status %d\n",
                      proc->procInfo.execPath, WEXITSTATUS(status));
              fflush(stubLogFd);
          }
          proc->currentNumFails++;
      } else if(WIFSIGNALED(status)) {
-         if(verbose) {
+         if(verbose && stubLogFd) {
             fprintf(stubLogFd, "FastCGI process %s terminated due to signal %d\n", 
                     proc->procInfo.execPath, WTERMSIG(status));
             fflush(stubLogFd);
@@ -344,7 +391,6 @@ char **unbuildEnvArray( char ** argp, char * lb_start, int lb_len,
     char *  lb_end = &lb[lb_len];
     int     ndx;
     char ** new_argp_area;
-    char ** new_argp;
 
 
     for ( ndx = initial_pad; (lb < lb_end) &&
@@ -357,27 +403,26 @@ char **unbuildEnvArray( char ** argp, char * lb_start, int lb_len,
         return argp;
     }
 
+    /* Free partially populated argp before resizing */
+    for (int i = initial_pad; i < ndx; i++) {
+        if (argp[i]) {
+            PL_strfree(argp[i]);
+        }
+    }
+    PR_Free(argp);
+
     /* overflow of argp; try it again, this time with a 2x bigger area */
     argp_sz *= 2+2;
     new_argp_area = (char **) PR_Calloc( argp_sz, sizeof (char *) );
     if ( new_argp_area == NULL ) {
-        if(verbose) {
+        if(verbose && stubLogFd) {
             fprintf(stubLogFd, "%s: calloc failure resizing for %d args\n", stubName, argp_sz );
             fflush(stubLogFd);
         }
         return NULL;
     }
-    new_argp = unbuildEnvArray( new_argp_area, lb_start, lb_len,
-                                      initial_pad, argp_sz );
-    /*
-     * if the recursed routine had to realloc itself, then free our
-     * temp area
-     */
-    if ( new_argp && new_argp != new_argp_area ) {
-        free( new_argp_area );
-    }
-
-    return new_argp;
+    return unbuildEnvArray( new_argp_area, lb_start, lb_len,
+                            initial_pad, argp_sz );
 }
 
 
@@ -437,49 +482,78 @@ PRStatus parseRequest( RequestHeader * rq, size_t rq_len, ProcessInfo *params, i
     char * eov   = (char *) rq + rq_len;
 
     while ( cptlv < eov ) {
+        if ((size_t)(eov - cptlv) < REQUEST_VECOFF) {
+            return PR_FAILURE;
+        }
         RequestDataHeader * ptlv;
         /* LINTED */
         ptlv = (RequestDataHeader *) cptlv;
+        if ( ptlv->len < (int)REQUEST_VECOFF || (size_t)ptlv->len > (size_t)(eov - cptlv) ) {
+            if(verbose && stubLogFd) {
+                fprintf(stubLogFd, "%s: WARNING : corrupt TLV length [%d]\n",
+                            stubName, (int) ptlv->len );
+                fflush(stubLogFd);
+            }
+            return PR_FAILURE;
+        }
+        int vecLen = ptlv->len - REQUEST_VECOFF;
+        if (ptlv->type != RQT_END && ptlv->type != RQT_ENVP && ptlv->type != RQT_ARGV) {
+            if (vecLen <= 0 || memchr(&ptlv->vector, '\0', vecLen) == NULL) {
+                return PR_FAILURE;
+            }
+        }
         switch( ptlv->type ) {
             case RQT_USERNAME:
-                params->userName = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->userName) PL_strfree(params->userName);
+                params->userName = PL_strdup(&ptlv->vector);
                 break;
             case RQT_GROUPNAME:
-                params->groupName = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->groupName) PL_strfree(params->groupName);
+                params->groupName = PL_strdup(&ptlv->vector);
                 break;
             case RQT_CHDIRPATH:
-                params->chDir = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->chDir) PL_strfree(params->chDir);
+                params->chDir = PL_strdup(&ptlv->vector);
                 break;
             case RQT_CHROOTPATH:
-                params->chRoot = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->chRoot) PL_strfree(params->chRoot);
+                params->chRoot = PL_strdup(&ptlv->vector);
                 break;
             case RQT_NICE:
-                params->priority = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->priority) PL_strfree(params->priority);
+                params->priority = PL_strdup(&ptlv->vector);
                 break;
             case RQT_RLIMIT_AS:
-                params->rlimit_as = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->rlimit_as) PL_strfree(params->rlimit_as);
+                params->rlimit_as = PL_strdup(&ptlv->vector);
                 break;
             case RQT_RLIMIT_CORE:
-                params->rlimit_core = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
-
+                if (params->rlimit_core) PL_strfree(params->rlimit_core);
+                params->rlimit_core = PL_strdup(&ptlv->vector);
                 break;
             case RQT_RLIMIT_CPU:
-                params->rlimit_cpu = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->rlimit_cpu) PL_strfree(params->rlimit_cpu);
+                params->rlimit_cpu = PL_strdup(&ptlv->vector);
                 break;
             case RQT_RLIMIT_NOFILE:
-                params->rlimit_nofile = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->rlimit_nofile) PL_strfree(params->rlimit_nofile);
+                params->rlimit_nofile = PL_strdup(&ptlv->vector);
                 break;
             case RQT_PATH:
-                params->execPath = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->execPath) PL_strfree(params->execPath);
+                params->execPath = PL_strdup(&ptlv->vector);
                 break;
             case RQT_ARGV0:
-                params->argv0 = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->argv0) PL_strfree(params->argv0);
+                params->argv0 = PL_strdup(&ptlv->vector);
                 break;
             case RQT_BIND_PATH:
-                params->bindPath = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->bindPath) PL_strfree(params->bindPath);
+                params->bindPath = PL_strdup(&ptlv->vector);
                 break;
             case RQT_RESTART_INTERVAL:
-                params->restartDelay = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->restartDelay) PL_strfree(params->restartDelay);
+                params->restartDelay = PL_strdup(&ptlv->vector);
                 if(params->restartDelay) {
                     int delayTime = atoi(params->restartDelay);
                     if(delayTime > 0)
@@ -492,30 +566,48 @@ PRStatus parseRequest( RequestHeader * rq, size_t rq_len, ProcessInfo *params, i
                 }
                 break;
             case RQT_MIN_PROCS:
-                params->minProcesses = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->minProcesses) PL_strfree(params->minProcesses);
+                params->minProcesses = PL_strdup(&ptlv->vector);
                 break;
             case RQT_MAX_PROCS:
-                params->maxProcesses = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->maxProcesses) PL_strfree(params->maxProcesses);
+                params->maxProcesses = PL_strdup(&ptlv->vector);
                 break;
             case RQT_LISTENQ_SIZE:
-                params->listenQueueDepth = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->listenQueueDepth) PL_strfree(params->listenQueueDepth);
+                params->listenQueueDepth = PL_strdup(&ptlv->vector);
                 break;
             case RQT_RESTART_ON_EXIT:
-                params->restartOnExit = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->restartOnExit) PL_strfree(params->restartOnExit);
+                params->restartOnExit = PL_strdup(&ptlv->vector);
                 break;
             case RQT_NUM_FAILURE:
-                params->numFailures = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (params->numFailures) PL_strfree(params->numFailures);
+                params->numFailures = PL_strdup(&ptlv->vector);
                 break;
             case RQT_VS_ID:
-                *vsId = (&ptlv->vector) ? PL_strdup(&ptlv->vector) : NULL;
+                if (*vsId) PL_strfree(*vsId);
+                *vsId = PL_strdup(&ptlv->vector);
                 break;
             case RQT_ENVP:
-                params->env = unbuildEnvArray( params->env, &ptlv->vector, ptlv->len - REQUEST_VECOFF, 0,
+                if (vecLen <= 0 || (&ptlv->vector)[vecLen - 1] != '\0') {
+                    return PR_FAILURE;
+                }
+                if (!params->env) {
+                    params->env = (char **)PR_Calloc(lcl_argsz, sizeof(char *));
+                }
+                params->env = unbuildEnvArray( params->env, &ptlv->vector, vecLen, 0,
                                        lcl_argsz );
                 break;
             case RQT_ARGV:
+                if (vecLen <= 0 || (&ptlv->vector)[vecLen - 1] != '\0') {
+                    return PR_FAILURE;
+                }
+                if (!params->args) {
+                    params->args = (char **)PR_Calloc(lcl_argsz, sizeof(char *));
+                }
                 /* offset by 1 in argv for room for argv0 */
-                params->args = unbuildEnvArray( params->args, &ptlv->vector, ptlv->len - REQUEST_VECOFF, 1,
+                params->args = unbuildEnvArray( params->args, &ptlv->vector, vecLen, 1,
                                        lcl_argsz );
                 break;
             case RQT_END:
@@ -523,7 +615,7 @@ PRStatus parseRequest( RequestHeader * rq, size_t rq_len, ProcessInfo *params, i
                 cptlv = eov; /* it'll go way past when round_up is done*/
                 break;
             default:
-                if(verbose) {
+                if(verbose && stubLogFd) {
                     fprintf(stubLogFd,
             "%s: WARNING - skipping unknown header value [%d]\n",
                         stubName, (int) ptlv->type );
@@ -532,48 +624,54 @@ PRStatus parseRequest( RequestHeader * rq, size_t rq_len, ProcessInfo *params, i
                 break;
         }   //switch
 
-        if ( ptlv->len < REQUEST_VECOFF ) {
-            if(verbose) {
-                fprintf(stubLogFd, "%s: WARNING : corrupt TLV length [%d]\n",
-                            stubName, (int) ptlv->len );
-                fflush(stubLogFd);
-            }
-            return PR_FAILURE;
-        }
-
         cptlv += ROUND_UP( ptlv->len, REQUEST_ALIGN );
     }   //while
 
-    /*  have to at LEAST have a program name,path and bindpath */
-    if ( ! params->argv0 || ! params->execPath || !params->bindPath) {
-        return PR_FAILURE;
+    int reqMsgType = 0;
+    memcpy(&reqMsgType, &rq->reqMsgType, sizeof(reqMsgType));
+    if (reqMsgType == RQ_START) {
+        /*  have to at LEAST have a program name, path and bindpath */
+        if ( ! params->argv0 || ! params->execPath || !params->bindPath) {
+            return PR_FAILURE;
+        }
+        if (!params->args) {
+            params->args = (char **)PR_Calloc(lcl_argsz, sizeof(char *));
+            if (!params->args) {
+                return PR_FAILURE;
+            }
+        }
+        /*  insert program name as argv[0] */
+        params->args[0] = const_cast<char *>(params->argv0);
+    } else if (reqMsgType == RQ_OVERLOAD) {
+        if (!params->execPath || !params->bindPath) {
+            return PR_FAILURE;
+        }
+    } else if (reqMsgType == RQ_VS_SHUTDOWN) {
+        if (!*vsId && (!params->execPath || !params->bindPath)) {
+            return PR_FAILURE;
+        }
     }
-
-    /*  insert program name as argv[0] */
-    params->args[0] = const_cast<char *>(params->argv0);
 
     return PR_SUCCESS;
 }
 
-PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd, FcgiProcess *proc) {
+PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd, FcgiProcess *proc, PRBool *keepConnOpen) {
     int one = 1; /* optval for setsockopt */
     int addrLen = 0;
     int isUds = 0;
     char *vsId = NULL;
     ProcessInfo procInfo;
-    char **localArgs = (char **)PR_Malloc(sizeof(char *) * ENVSIZE);
-    char **localEnv = (char **)PR_Malloc(sizeof(char *) * ENVSIZE);
 
+    *keepConnOpen = PR_FALSE;
     memset( &procInfo, 0, sizeof(ProcessInfo));
-    memset( &localEnv[0], 0, ENVSIZE);
-    memset( &localArgs[0], 0, ENVSIZE);
-
-    proc->procInfo.env = localEnv;
-    proc->procInfo.args = localArgs;
 
     if(parseRequest( rq, pDatalen, &(proc->procInfo), ENVSIZE, &vsId) == PR_FAILURE) {
         sendResponseToStubRequest(connfd, REQUEST_MISSING_OR_INVALID_PARAM);
         printMsg("missing param");
+        if (vsId) {
+            PL_strfree(vsId);
+        }
+        delete proc;
         return PR_FAILURE;
     }
 
@@ -583,13 +681,13 @@ PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd,
     for(; i<len; i++) {
         FcgiProcess *p = (FcgiProcess *)processList[i];
         if(*p == *proc) {
-            if(verbose) {
+            if(verbose && stubLogFd) {
                 fprintf(stubLogFd, "%s bound to %s is already running\n", proc->procInfo.execPath, proc->procInfo.bindPath);
                 fflush(stubLogFd);
             }
+            p->addVsId(vsId);
             PR_Unlock(lockProcessList);
             sendResponseToStubRequest(connfd, NO_FCGI_ERROR);
-            free(vsId);
             delete proc;
             return PR_SUCCESS;
         }
@@ -630,9 +728,10 @@ PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd,
 
     // Try to bind
 #ifdef XP_UNIX
-    if(isUds)
+    if(isUds) {
         addrLen = sizeof(struct sockaddr_un);
-    else
+        unlink(procInfo.bindPath);
+    } else
 #endif //XP_UNIX
         addrLen = sizeof(struct sockaddr_in);
 
@@ -650,9 +749,9 @@ PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd,
 #ifdef XP_UNIX
     if (isUds) {
         if(chmod(procInfo.bindPath, 0777)) {
-            perror("chmod");
-            PR_Unlock(lockProcessList);
-            exit(3);
+            sendResponseToStubRequest(connfd, SERVER_BIND_ERROR);
+            printMsg("chmod failure on bind-path");
+            goto failure;
         }
     }
 #endif //XP_UNIX
@@ -669,11 +768,18 @@ PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd,
 #endif // XP_WIN32
 
     proc->addVsId(vsId);
+    vsId = NULL;
 
 #ifdef LINUX
     proc->createRequest = PR_TRUE;
     processList.append(proc);
+    *keepConnOpen = PR_TRUE;
     PR_Unlock(lockProcessList);
+    if (condVarLock && condVar) {
+        PR_Lock(condVarLock);
+        PR_NotifyAllCondVar(condVar);
+        PR_Unlock(condVarLock);
+    }
 #else
     if(startProcesses(proc, proc->minProcs) != PR_SUCCESS) {
         goto failure;
@@ -687,6 +793,9 @@ PRStatus handleStartRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd,
     return PR_SUCCESS;
 
 failure:
+    if (vsId) {
+        PL_strfree(vsId);
+    }
     delete proc;
     proc = NULL;
     PR_Unlock(lockProcessList);
@@ -699,6 +808,9 @@ PRStatus handleOverloadRequest(RequestHeader *rq, int pDatalen, FileDescPtr conn
     if(parseRequest( rq, pDatalen, &(proc->procInfo), ENVSIZE, &vsId) == PR_FAILURE) {
         sendResponseToStubRequest(connfd, REQUEST_MISSING_OR_INVALID_PARAM);
         printMsg("missing param");
+        if (vsId) {
+            PL_strfree(vsId);
+        }
         delete proc;
         return PR_FAILURE;
     }
@@ -709,7 +821,6 @@ PRStatus handleOverloadRequest(RequestHeader *rq, int pDatalen, FileDescPtr conn
     for(; i<len; i++) {
         FcgiProcess *p = (FcgiProcess *)processList[i];
         if(*p == *proc) {
-        //if((*(processList[i])) == (*proc)) {
            delete proc;
            proc = (FcgiProcess *)processList[i];
            break;
@@ -719,12 +830,18 @@ PRStatus handleOverloadRequest(RequestHeader *rq, int pDatalen, FileDescPtr conn
     if(i == len) { // process not in the list
         sendResponseToStubRequest(connfd, PROC_DOES_NOT_EXIST);
         printMsg("process does not exist");
+        if (vsId) {
+            PL_strfree(vsId);
+        }
         delete proc;
         PR_Unlock(lockProcessList);
         return PR_FAILURE;
     }
 
     if(startProcesses(proc, 1) != PR_SUCCESS) {
+        if (vsId) {
+            PL_strfree(vsId);
+        }
         PR_Unlock(lockProcessList);
         return PR_FAILURE;
     }
@@ -740,34 +857,50 @@ PRStatus handleVSRequest(RequestHeader *rq, int pDatalen, FileDescPtr connfd, Fc
     if(parseRequest( rq, pDatalen, &(proc->procInfo), ENVSIZE, &vsId) == PR_FAILURE) {
         sendResponseToStubRequest(connfd, REQUEST_MISSING_OR_INVALID_PARAM);
         printMsg("missing param");
+        if (vsId) {
+            PL_strfree(vsId);
+        }
         delete proc;
         return PR_FAILURE;
     }
 
+    PR_Lock(lockProcessList);
     FcgiProcess *p;
     int len = processList.length();
 
     for(int i=0; i<len; i++) {
         p = (FcgiProcess *)processList[i];
-        if((p->containsVsId(vsId)) && (p->getNumVS() == 1)) {
-            processList.removeAt(i);
-            delete p;
-            p = NULL;
+        if(vsId && p->containsVsId(vsId)) {
+            if (p->getNumVS() == 1) {
+                processList.removeAt(i);
+                delete p;
+                p = NULL;
+                i--;
+                len = processList.length();
+            } else {
+                p->removeVsId(vsId);
+            }
         } //if
     } //for proclist
+    PR_Unlock(lockProcessList);
 
+    if (vsId) {
+        PL_strfree(vsId);
+    }
+    delete proc;
     sendResponseToStubRequest(connfd, NO_FCGI_ERROR);
     return PR_SUCCESS;
 }
 
-PRStatus processMessage( FileDescPtr connfd, void * pData, int pDatalen, FcgiProcess *proc ) {
+PRStatus processMessage( FileDescPtr connfd, void * pData, int pDatalen, FcgiProcess *proc, PRBool *keepConnOpen ) {
     RequestHeader * rq;
     PRStatus rv = PR_SUCCESS;
+    *keepConnOpen = PR_FALSE;
 
     rq = (RequestHeader *) pData;
-    if ( pDatalen < sizeof( *rq )) {
+    if ( pDatalen < (int)sizeof( *rq )) {
         sendResponseToStubRequest(connfd, REQUEST_INCOMPLETE_HEADER);
-        if(verbose) {
+        if(verbose && stubLogFd) {
             fprintf(stubLogFd,
                 "WARNING - got short message from client %d bytes; aborting\n",
                 pDatalen );
@@ -778,8 +911,8 @@ PRStatus processMessage( FileDescPtr connfd, void * pData, int pDatalen, FcgiPro
     }
 
     if ( rq->reqVersion != STUBVERSION ) {
-        if(verbose) {
-            fprintf(stubLogFd, "%s: got an INVALID VERSION id [%d]\n", STUB_NAME, rq->reqVersion );
+        if(verbose && stubLogFd) {
+            fprintf(stubLogFd, "%s: got an INVALID VERSION id [%lu]\n", STUB_NAME, rq->reqVersion );
             fflush(stubLogFd);
         }
         sendResponseToStubRequest(connfd, INVALID_VERSION);
@@ -787,19 +920,21 @@ PRStatus processMessage( FileDescPtr connfd, void * pData, int pDatalen, FcgiPro
         return PR_FAILURE;
     }
 
-    switch (rq->reqMsgType ) {
+    int reqMsgType = 0;
+    memcpy(&reqMsgType, &rq->reqMsgType, sizeof(reqMsgType));
+    switch (reqMsgType) {
         case RQ_START:
-            rv = handleStartRequest( rq, pDatalen, connfd, proc );
+            rv = handleStartRequest( rq, pDatalen, connfd, proc, keepConnOpen );
             break;
         case RQ_OVERLOAD:
             rv = handleOverloadRequest( rq, pDatalen, connfd, proc );
             break;
         case RQ_VS_SHUTDOWN:
-//            rv = handleVSRequest( rq, pDatalen, connfd, proc );
+            rv = handleVSRequest( rq, pDatalen, connfd, proc );
             break;
         default:
-            if(verbose) {
-                fprintf(stubLogFd, "%s: got an INVALID request id [%d]\n", STUB_NAME, rq->reqMsgType );
+            if(verbose && stubLogFd) {
+                fprintf(stubLogFd, "%s: got an INVALID request id [%d]\n", STUB_NAME, reqMsgType );
                 fflush(stubLogFd);
             }
             sendResponseToStubRequest(connfd, INVALID_REQUEST_TYPE);
@@ -820,21 +955,20 @@ PRStatus processMessage( FileDescPtr connfd, void * pData, int pDatalen, FcgiPro
  */
 NSPR_BEGIN_EXTERN_C
 void processRequest(void *proc) {
-    char iobuf[IOBUFSIZE] = "";
-//    char *iobuf = (char *)PR_Malloc(sizeof(char) * IOBUFSIZE);
-    PRUint32         iobufLen = 0;
-    PRUint32         tobeRead = 0;
-    PRUint32         readlen = 0;
-    int    pDataLen = 0;
+    char iobuf[IOBUFSIZE];
+    PRUint64         iobufLen = 0;
+    PRUint64         tobeRead = 0;
+    PRInt32          readlen = 0;
+    int              pDataLen = 0;
 #ifdef XP_WIN32
     BOOL fSuccess;
 #endif //XP_WIN32
 
-//    netbuf *buf;
-    PRBool done = PR_FALSE;
+    PRBool messageProcessed = PR_FALSE;
+    PRBool keepConnOpen = PR_FALSE;
     FcgiProcess *fcgiProcess = (FcgiProcess *)proc;
     FileDescPtr connfd = fcgiProcess->getClientFd();
- //   memset(iobuf, 0, (sizeof(char *) * IOBUFSIZE));
+    memset(iobuf, 0, sizeof(iobuf));
     RequestHeader * pRec = (RequestHeader *)iobuf;
 
     tobeRead = IOBUFSIZE;
@@ -842,7 +976,7 @@ void processRequest(void *proc) {
 #ifdef XP_UNIX
 processAgain:
     PR_ClearInterrupt();
-    while ( tobeRead > 0 && ((readlen = PR_Recv( connfd, &iobuf[iobufLen], tobeRead,
+    while ( tobeRead > 0 && ((readlen = PR_Recv( connfd, &iobuf[iobufLen], (PRInt32)tobeRead,
                             0, PR_INTERVAL_NO_TIMEOUT )) > 0)) {
 #else
     while(tobeRead > 0) {
@@ -850,7 +984,7 @@ processAgain:
         // Read client requests from the pipe.
         fSuccess = ReadFile(connfd,            // handle to pipe
                            &iobuf[iobufLen],  // buffer to receive data
-                           tobeRead,          // size of buffer
+                           (DWORD)tobeRead,   // size of buffer
                            (unsigned long *)&readlen, // number of bytes read
                            NULL);        // not overlapped I/O
 
@@ -858,63 +992,74 @@ processAgain:
            break;
 #endif //XP_UNIX
 
+        iobufLen += (PRUint64)readlen;
+        if (iobufLen < sizeof(pRec->reqMsgLen)) {
+            tobeRead = IOBUFSIZE - iobufLen;
+            continue;
+        }
 
-         // the logic is really hokey here: if the request is longer
-         // than IOBUFSIZE (which might happen with those REALLY LONG
-         // query strings, after filling up the iobuf, you'll call
-         // read(..,..,0) which will return 0 which will cause it to exit.
-         // The quick fix is to increase the buffer size to be able to
-         // hold the longest possible request.
-         // Which is: 4k query string * 2 (env and argv) + some -> 10240
-        // as we're using STREAM sockets, wait until we've a complete
-        // message
         pDataLen = pRec->reqMsgLen;
-        iobufLen += readlen;
-        if(readlen >= pDataLen)
+        if (pDataLen < (int)sizeof(RequestHeader) || pDataLen > IOBUFSIZE) {
+            messageProcessed = PR_TRUE;
+            processMessage(connfd, &iobuf[0], (int)sizeof(RequestHeader) - 1, fcgiProcess, &keepConnOpen);
+            fcgiProcess = NULL;
+            PR_Sleep(PR_MillisecondsToInterval(10));
+#ifdef XP_UNIX
+            PR_Close(connfd);
+#else
+            CloseHandle(connfd);
+#endif
+            connfd = NULL;
+            return;
+        }
+
+        if (iobufLen >= (PRUint64)pDataLen)
             tobeRead = 0;
         else
-            tobeRead = pDataLen - readlen;
+            tobeRead = (PRUint64)pDataLen - iobufLen;
+
         if(tobeRead == 0) {
+            messageProcessed = PR_TRUE;
             // the request length includes the whole RequestHeader record
-            if ( processMessage( connfd, &iobuf[0], pDataLen, fcgiProcess) != PR_SUCCESS ) {
-//                 delete fcgiProcess;
-//                 fcgiProcess = NULL;
+            PRStatus status = processMessage( connfd, &iobuf[0], pDataLen, fcgiProcess, &keepConnOpen);
+            fcgiProcess = NULL;
+            if ( status != PR_SUCCESS ) {
                 //sleep for sometime before to give sometime for the client to read the
                 //bytes
                 PR_Sleep(PR_MillisecondsToInterval(10));
+                if (!keepConnOpen && connfd) {
 #ifdef XP_UNIX
-                PR_Close(connfd);
+                    PR_Close(connfd);
 #else
-                CloseHandle(connfd);
+                    CloseHandle(connfd);
 #endif //XP_UNIX
-                connfd = NULL;
+                    connfd = NULL;
+                }
                 return;
             }
-
-            // now, move the remaining data to the front of the
-            // io buffer
+            break;
         } //if
     } //while
 
 #ifdef XP_UNIX
-    if(PR_GetError() == PR_PENDING_INTERRUPT_ERROR) {
+    if(!messageProcessed && PR_GetError() == PR_PENDING_INTERRUPT_ERROR && !stubStopSignal) {
         goto processAgain;     //repeat
     }
 #endif //XP_UNIX
 
-    if (connfd) {
+    if (!messageProcessed) {
+        if (iobufLen > 0 && connfd) {
+            sendResponseToStubRequest(connfd, REQUEST_INCOMPLETE_HEADER);
+            PR_Sleep(PR_MillisecondsToInterval(10));
+        }
+        delete fcgiProcess;
+        fcgiProcess = NULL;
+    }
+
+    if (connfd && !keepConnOpen) {
 #ifdef XP_UNIX
-    // EOF/error occurred; the client closed us (or went away),
-    // so we go away also
-#ifdef LINUX
-        if(!fcgiProcess->createRequest)  {
-#endif // LINUX
         PR_Close(connfd);
         connfd = NULL;
-#ifdef LINUX
-        }
-#endif // LINUX
-
 #else
         DisconnectNamedPipe(connfd);
         CloseHandle(connfd);
@@ -969,6 +1114,10 @@ void serveRequests() {
 #endif //XP_UNIX
 
      for(;;) {
+        if (stubStopSignal) {
+            stopStubThread();
+            return;
+        }
         PR_ClearInterrupt();
 #ifdef XP_WIN32
         if(!connFd) {
@@ -983,25 +1132,38 @@ void serveRequests() {
 
 #ifdef XP_UNIX
 again:
+        if (stubStopSignal) {
+            stopStubThread();
+            return;
+        }
+        {
+            PRPollDesc pfd;
+            pfd.fd = stubFd;
+            pfd.in_flags = PR_POLL_READ;
+            pfd.out_flags = 0;
+            PRInt32 prv = PR_Poll(&pfd, 1, PR_MillisecondsToInterval(200));
+            if (stubStopSignal) {
+                stopStubThread();
+                return;
+            }
+            if (prv <= 0) {
+                goto again;
+            }
+        }
         FileDescPtr connFd = PR_Accept( stubFd, &netAddr, PR_INTERVAL_NO_TIMEOUT);
         //accept connections from plugin
         if ( connFd == NULL ) {
-            if(PR_GetError() == PR_PENDING_INTERRUPT_ERROR) {
-                printMsg("got interrupted while serving request");
-                if(stubStopSignal) {
-                    PR_Close(connFd);
-                    return;
-                } else
-                    goto again;     //repeat
+            if (stubStopSignal) {
+                stopStubThread();
+                return;
             }
-
-            if(stubStopSignal) {
-                _exit(0);
+            PRErrorCode err = PR_GetError();
+            if (err == PR_IO_TIMEOUT_ERROR || err == PR_PENDING_INTERRUPT_ERROR) {
+                goto again;
             }
 
             lastError = STUB_ACCEPT_ERROR;
-            sendResponse();
-            PR_Close(connFd);
+            printMsg("stub accept error");
             goto again;     //repeat
         }
 #else
@@ -1045,14 +1207,12 @@ again:
 }
 
 void cleanStub(int s) {
-    printMsg("clean stub");
-    stubStopSignal = PR_TRUE;
-    if(monThread || childHandlerThread) {
-        stopStubThread();
-        monThread = NULL;
-        childHandlerThread = NULL;
+    stubStopSignal = 1;
+#ifdef XP_UNIX
+    if (stubNativeFd >= 0) {
+        shutdown(stubNativeFd, SHUT_RDWR);
     }
-    return;
+#endif
 }
 
 /*
@@ -1067,6 +1227,13 @@ int main( int argc, char * argv[] ) {
     char *fcgiStubLogDir = NULL;
     char *wsId = NULL;
 
+#ifdef XP_UNIX
+    cleanupEnvironment();
+#endif
+
+    lockProcessList = PR_NewLock();
+    lockDeadChildList = PR_NewLock();
+
 //#undef DEBUG_LOG
 #define DEBUG_LOG
 #ifdef DEBUG_LOG
@@ -1078,15 +1245,19 @@ int main( int argc, char * argv[] ) {
     while ( (c = getopt(argc, argv, "b:t:i:l:v")) != -1) {
         switch (c) {
             case 'b':
+                if (stubBindPath) PL_strfree(stubBindPath);
                 stubBindPath = PL_strdup( optarg );    //UDS name
                 break;
             case 't':
+                if (fcgiTmpDir) PL_strfree(fcgiTmpDir);
                 fcgiTmpDir = PL_strdup( optarg );  //Temporary directory name
                 break;
            case 'i':
+                if (wsId) PL_strfree(wsId);
                 wsId = PL_strdup( optarg );
                 break;
            case 'l':
+                if (fcgiStubLogDir) PL_strfree(fcgiStubLogDir);
                 fcgiStubLogDir = PL_strdup( optarg );
                 break;
            case 'v':
@@ -1097,7 +1268,7 @@ int main( int argc, char * argv[] ) {
         }   //switch
     }   //while
 
-    if(verbose) {
+    if(verbose && fcgiStubLogDir) {
         int len = 0;
 #ifdef XP_UNIX
         // 2 bytes extra for path-separator and '\0'
@@ -1105,16 +1276,19 @@ int main( int argc, char * argv[] ) {
         stubLogFileName = (char *)PR_Malloc(len);
         PR_snprintf(stubLogFileName, len, "%s%c%s", fcgiStubLogDir, FILE_PATHSEP, STUB_LOG_FILE_NAME);
 #else
+        const char *wsIdStr = wsId ? wsId : "default";
         // 3 bytes extra for path-separator and '-' (for separating server
         // id and stub log file name) and '\0'
         len = strlen(fcgiStubLogDir) + strlen(STUB_LOG_FILE_NAME) +
-                  strlen(wsId) + 3;
+                  strlen(wsIdStr) + 3;
         stubLogFileName = (char *)PR_Malloc(len);
-        PR_snprintf(stubLogFileName, len, "%s%c%s-%s", fcgiStubLogDir, FILE_PATHSEP, wsId, STUB_LOG_FILE_NAME);
+        PR_snprintf(stubLogFileName, len, "%s%c%s-%s", fcgiStubLogDir, FILE_PATHSEP, wsIdStr, STUB_LOG_FILE_NAME);
 #endif //XP_UNIX
         stubLogFd = fopen(stubLogFileName, "a+");
         if(!stubLogFd)
             verbose = PR_FALSE;
+    } else {
+        verbose = PR_FALSE;
     }
 
     printMsg("<<<<<< ERROR LOG >>>>>>");
@@ -1131,26 +1305,29 @@ int main( int argc, char * argv[] ) {
         PL_strfree(wsId);
         wsId = NULL;
     }
-
-    if ( errflg || !stubBindPath ) {
-        if(verbose)
-            fprintf(stubLogFd, "usage: %s -b <bind path> -t <tmp dir> -i <server id> -l <log dir> [-v] \n", argv[0]);
-        fflush(stubLogFd);
-        return (1);
+    if(fcgiStubLogDir) {
+        PL_strfree(fcgiStubLogDir);
+        fcgiStubLogDir = NULL;
     }
 
     // make sure the child processes that stay in the same process
     // group get killed when the Fastcgi stub ends
     atexit(handleExit);
 
-    if ( verbose ) {
+    if ( errflg || !stubBindPath ) {
+        if(verbose && stubLogFd) {
+            fprintf(stubLogFd, "usage: %s -b <bind path> -t <tmp dir> -i <server id> -l <log dir> [-v] \n", argv[0]);
+            fflush(stubLogFd);
+        }
+        return (1);
+    }
+
+    if ( verbose && stubLogFd ) {
         fprintf(stubLogFd, "%s - version (%d)\n", argv[0], STUBVERSION );
         fflush(stubLogFd);
     }
 
-#ifdef XP_UNIX
-   cleanupEnvironment();
-#else
+#ifndef XP_UNIX
     stubStopEventHandle = CreateEvent(NULL, FALSE, FALSE, "StubStopEvent");
     if(stubStopEventHandle == NULL) {
         lastError = STUB_START_FAILURE;
@@ -1166,11 +1343,16 @@ int main( int argc, char * argv[] ) {
     PRStatus res = PR_SUCCESS;
     if(stubBindPath) {
         res = getNetAddr(stubBindPath, &stubAddr);
-        if(res == PR_SUCCESS)
+        if(res == PR_SUCCESS) {
             stubFd = PR_Socket(stubAddr.local.family, SOCK_STREAM, 0);
-        primordialPid = atoi(strrchr(stubBindPath, '_') + 1);
-        if ( verbose ) {
-            fprintf(stubLogFd, "Web Server Primordial pid - (%d)\n", primordialPid );
+            if (stubFd) {
+                stubNativeFd = PR_FileDesc2NativeHandle(stubFd);
+            }
+        }
+        const char *underscore = strrchr(stubBindPath, '_');
+        primordialPid = (underscore && *(underscore + 1)) ? atoi(underscore + 1) : -1;
+        if ( verbose && stubLogFd ) {
+            fprintf(stubLogFd, "Web Server Primordial pid - (%d)\n", (int)primordialPid );
             fflush(stubLogFd);
         }
     }
@@ -1188,11 +1370,15 @@ int main( int argc, char * argv[] ) {
         exit(-1);
     }
 
+    if (stubAddr.local.family == PR_AF_LOCAL) {
+        unlink(stubBindPath);
+    }
+
 #ifdef LINUX
     // Change the umask so that unix domain socket is created with
     // permissions for all. This enables servers that run as nobody
     // to connect to this Fastcgistub channel (created by root)
-    mode_t old_mask;
+    mode_t old_mask = 0;
     if (geteuid() == 0)
         old_mask = umask(0);
 #endif
@@ -1231,9 +1417,17 @@ int main( int argc, char * argv[] ) {
 
 void FastCGISetSignals()
 {
-    signal(SIGTERM, cleanStub);
 #ifdef XP_UNIX
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = cleanStub;
+    sa.sa_flags = 0;
+    sigaction(SIGTERM, &sa, NULL);
     signal(SIGCHLD, SIG_DFL);
+    signal(SIGPIPE, SIG_IGN);
+#else
+    signal(SIGTERM, cleanStub);
 #endif //XP_UNIX
 }
 
@@ -1270,22 +1464,36 @@ void startStubThread() {
 //-----------------------------------------------------------------------------
 
 void stopStubThread() {
-    //notify threads about termination
-    PR_Lock(condVarLock);
-    terminateThread = PR_TRUE;
-    PR_NotifyAllCondVar(condVar);
-    PR_Unlock(condVarLock);
+    if (!monThread && !childHandlerThread) {
+        return;
+    }
 
-    PR_Interrupt(childHandlerThread);
-    PR_Interrupt(monThread);
+    //notify threads about termination
+    if (condVarLock && condVar) {
+        PR_Lock(condVarLock);
+        terminateThread = PR_TRUE;
+        PR_NotifyAllCondVar(condVar);
+        PR_Unlock(condVarLock);
+    } else {
+        terminateThread = PR_TRUE;
+    }
+
+    if (childHandlerThread) {
+        PR_Interrupt(childHandlerThread);
+    }
+    if (monThread) {
+        PR_Interrupt(monThread);
+    }
 
     //wait for the threads to exit
-    PR_JoinThread(monThread);
-    PR_JoinThread(childHandlerThread);
-
-    handleExit();
-    PR_DestroyCondVar(condVar);
-    PR_DestroyLock(condVarLock);
+    if (monThread && monThread != PR_GetCurrentThread()) {
+        PR_JoinThread(monThread);
+    }
+    monThread = NULL;
+    if (childHandlerThread && childHandlerThread != PR_GetCurrentThread()) {
+        PR_JoinThread(childHandlerThread);
+    }
+    childHandlerThread = NULL;
 }
 
 void childExitHandlerThread(void *arg) {
@@ -1319,7 +1527,8 @@ void childExitHandlerThread(void *arg) {
                 proc = (FcgiProcess *)processList[i];
                 if(proc->createRequest) {
                     if(startProcesses(proc, proc->minProcs) != PR_SUCCESS) {
-                        PR_Close(proc->getClientFd());
+                        PR_Sleep(PR_MillisecondsToInterval(10));
+                        proc->closeClientFd();
                         if(processList.removeAt(i) == PR_SUCCESS) {
                             delete proc;
                             proc = NULL;
@@ -1330,7 +1539,7 @@ void childExitHandlerThread(void *arg) {
                     }
                     proc->createRequest = PR_FALSE;
                     sendResponseToStubRequest(proc->getClientFd(), NO_FCGI_ERROR);
-                    PR_Close(proc->getClientFd());
+                    proc->closeClientFd();
                 }
             }
         }
@@ -1342,19 +1551,39 @@ void childExitHandlerThread(void *arg) {
                 PR_Lock(lockProcessList);
                 proc = FcgiProcess::lookupChildPid(processList, childPid);
                 if(!proc) {
-                    if(verbose) {
-                        fprintf(stubLogFd, "The child %d is not listed within the Servers list \n", childPid);
+                    if(verbose && stubLogFd) {
+                        fprintf(stubLogFd, "The child %d is not listed within the Servers list \n", (int)childPid);
                         fflush(stubLogFd);
                     }
                     PR_Unlock(lockProcessList);
                     continue;
                 }
 
+                ChildProcessData *childData = proc->childExists(childPid);
+                if(childData != NULL) {
+                    //check the time interval elapsed since start of the process
+                    PRIntervalTime startInterval = PR_IntervalNow() - childData->epoch;
+
+                    //if this interval is too small, then we can assume that there was a startup error
+                    if((startInterval <= startupFailureInterval) && (startInterval < proc->procInfo.restartDelayTime)) {
+                        if(verbose && stubLogFd) {
+                            fprintf(stubLogFd, "%d process startup failure, trying to restart \n", (int)childPid);
+                            fflush(stubLogFd);
+                        }
+                        proc->currentNumFails++;
+                    }
+                }
+
+                proc->removeChild(childPid);
+
+                //log the status
+                processExit(proc, status, childPid);
+
                 int restartOnExit = proc->getIntParameter(proc->procInfo.restartOnExit);
                 //if restartOnExit option is not set, then don't restart !
                 //else, check if child exited soon after exec and it has happened several times in short span
                 if((restartOnExit != 1) || (proc->currentNumFails >= proc->totalNumFails)) {
-                    if(verbose) {
+                    if(verbose && stubLogFd) {
                         fprintf(stubLogFd, "Even after trying %d time(s), %s process failed to start...no more retries\n", proc->currentNumFails,  proc->procInfo.execPath);
                         fflush(stubLogFd);
                     }
@@ -1367,26 +1596,6 @@ void childExitHandlerThread(void *arg) {
                     PR_Unlock(lockProcessList);
                     continue;
                 }
-
-                ChildProcessData *childData = proc->childExists(childPid);
-                if(childData != NULL) {
-                    //check the time interval elapsed since start of the process
-                    PRIntervalTime startInterval = PR_IntervalNow() - childData->epoch;
-
-                    //if this interval is too small, then we can assume that there was a startup error
-                    if((startInterval <= startupFailureInterval) && (startInterval < proc->procInfo.restartDelayTime)) {
-                        if(verbose) {
-                            fprintf(stubLogFd, "%d process startup failure, trying to restart \n", childPid);
-                            fflush(stubLogFd);
-                        }
-                        proc->currentNumFails++;
-                    }
-                }
-
-                proc->removeChild(childPid);
-
-                //log the status
-                processExit(proc, status, childPid);
 
                 //restart the process only if current num of processes is less than maxProcs
                 startProcesses(proc, 1, PR_TRUE);
@@ -1446,7 +1655,9 @@ void childExitHandlerThread(void *arg) {
         PR_Unlock(lockProcessList);
 #endif //XP_UNIX
         PR_Lock(condVarLock);
-        PR_WaitCondVar(condVar, sleepInterval);
+        if (!terminateThread) {
+            PR_WaitCondVar(condVar, sleepInterval);
+        }
         PR_Unlock(condVarLock);
 
         if(PR_GetError() == PR_PENDING_INTERRUPT_ERROR) {
@@ -1465,7 +1676,12 @@ void childExitHandlerThread(void *arg) {
             int rv = kill(primordialPid, 0);
             if (rv < 0 && errno == ESRCH) {
                 printMsg("primordial died");
-                kill(getpid(), SIGTERM);
+                stubStopSignal = 1;
+                terminateThread = PR_TRUE;
+                if (stubNativeFd >= 0) {
+                    shutdown(stubNativeFd, SHUT_RDWR);
+                }
+                break;
             }
         }
 #endif // XP_UNIX
@@ -1542,7 +1758,9 @@ void monitorThread(void *arg) {
 
         // Pace ourselves
         PR_Lock(condVarLock);
-        PR_WaitCondVar(condVar, minSleepInterval);
+        if (!terminateThread) {
+            PR_WaitCondVar(condVar, minSleepInterval);
+        }
         PR_Unlock(condVarLock);
 
         if(PR_GetError() == PR_PENDING_INTERRUPT_ERROR) {

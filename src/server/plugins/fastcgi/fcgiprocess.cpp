@@ -56,18 +56,33 @@
 #include "fcgiprocess.h"
 
 FcgiProcess::FcgiProcess(FileDescPtr connFd, FILE *fd, PRBool verbose)
-: clientFd(connFd), logFd(fd), verboseSet(verbose),
-  currentNumFails(0), totalNumFails(0), serverFd(-1)
+: maxProcs(0), minProcs(0), currentNumFails(0), totalNumFails(0),
+  serverFd(-1),
+#ifdef LINUX
+  createRequest(PR_FALSE),
+#endif
+  clientFd(connFd), logFd(fd), verboseSet(verbose), procPriority(0)
 {
     memset((char *)&procInfo, 0, sizeof(procInfo));
     children = new GenericList();
+}
+
+void FcgiProcess::closeClientFd() {
+    if (clientFd) {
+#ifdef XP_UNIX
+        PR_Close(clientFd);
+#else
+        CloseHandle(clientFd);
+#endif
+        clientFd = NULL;
+    }
 }
 
 FcgiProcess::~FcgiProcess() {
     PRBool serverFdClosed = PR_FALSE;
     terminateChilds();
 
-    if(serverFd > 0) {
+    if(serverFd >= 0) {
 #ifdef XP_UNIX
         close(serverFd);
 #else
@@ -94,11 +109,13 @@ FcgiProcess::~FcgiProcess() {
             procInfo.bindPath = NULL;
         }
         if(procInfo.servAddr) {
-            delete (procInfo.servAddr);
+            free(procInfo.servAddr);
             procInfo.servAddr = NULL;
         }
-        //memory will be freed when procInfo.args are freed
         if(procInfo.argv0) {
+            if(!procInfo.args || procInfo.args[0] != procInfo.argv0) {
+                PL_strfree(procInfo.argv0);
+            }
             procInfo.argv0 = NULL;
         }
         if(procInfo.env) {
@@ -106,7 +123,14 @@ FcgiProcess::~FcgiProcess() {
             procInfo.env = NULL;
         }
         if(procInfo.args) {
-            fcgi_util_env_free(procInfo.args);
+            if(!procInfo.args[0]) {
+                for(char **ap = &procInfo.args[1]; *ap; ap++) {
+                    PR_Free(*ap);
+                }
+                PR_Free(procInfo.args);
+            } else {
+                fcgi_util_env_free(procInfo.args);
+            }
             procInfo.args = NULL;
         }
         if(procInfo.userName) {
@@ -173,8 +197,9 @@ FcgiProcess::~FcgiProcess() {
    
     // clear the vsIds in the vsIdList
     for (int i=0; i < vsIdList.length(); i++) {
-       delete vsIdList[i]; 
+       PL_strfree((char *)vsIdList[i]);
     }
+    vsIdList.flush();
 }
 
 void FcgiProcess::initProcess() {
@@ -208,7 +233,7 @@ PRStatus FcgiProcess::addChild(PidType cPid) {
     if(children->length() > maxProcs)
         return PR_FAILURE;
 
-    ChildProcessData *procData = PR_NEW(ChildProcessData);
+    ChildProcessData *procData = new ChildProcessData;
     procData->pid = cPid;
     procData->epoch = PR_IntervalNow();
     children->append(procData);
@@ -217,23 +242,37 @@ PRStatus FcgiProcess::addChild(PidType cPid) {
 }
 
 void FcgiProcess::addVsId(char *vsid) {
-    if(!vsIdList.contains(vsid)) {
+    if(!vsid)
+        return;
+    if(!containsVsId(vsid)) {
         vsIdList.append(vsid);
+    } else {
+        PL_strfree(vsid);
     }
 }
 
 void FcgiProcess::removeVsId(char *vsid) {
-    if(vsIdList.contains(vsid)) {
-        vsIdList.remove(vsid);
+    if(!vsid)
+        return;
+    int len = vsIdList.length();
+    for(int i=0; i<len; i++) {
+        char *vId = (char *)vsIdList[i];
+        if(vId && !PL_strcmp(vId, vsid)) {
+            vsIdList.removeAt(i);
+            PL_strfree(vId);
+            return;
+        }
     }
 }
 
 PRBool FcgiProcess::containsVsId(char *vsid) {
+    if(!vsid)
+        return PR_FALSE;
     char *vId = NULL;
     int len = vsIdList.length();
     for(int i=0; i<len; i++) {
         vId = (char *)vsIdList[i];
-        if(!PL_strcmp(vId, vsid))
+        if(vId && !PL_strcmp(vId, vsid))
             return PR_TRUE;
     }
 
@@ -252,7 +291,7 @@ ChildProcessData *FcgiProcess::childExists(PidType p) {
     return NULL;
 }
 
-FcgiProcess *FcgiProcess::lookupChildPid(GenericList procList, PidType p) {
+FcgiProcess *FcgiProcess::lookupChildPid(GenericList& procList, PidType p) {
     int len = procList.length();
     FcgiProcess *proc = NULL;
 
@@ -271,6 +310,7 @@ void FcgiProcess::removeChild(PidType p) {
     ChildProcessData *child = childExists(p);
     if(child) {
         children->remove(child);
+        delete child;
     }
 }
 
@@ -310,6 +350,9 @@ void FcgiProcess::sendErrorStatus(PluginError errorType) {
 }
 
 void FcgiProcess::terminateChilds() {
+    if (!children) {
+        return;
+    }
 
     ChildProcessData *data;
     int len = getNumChildren();
@@ -317,11 +360,11 @@ void FcgiProcess::terminateChilds() {
 
     for(i=0; i<len; i++) {
         data = getChild(i);
-        if(verboseSet) {
-            fprintf(logFd, "terminating child - %d\n", data->pid);
-            fflush(logFd);
-        }
         if(data) {
+            if(verboseSet && logFd) {
+                fprintf(logFd, "terminating child - %d\n", (int)data->pid);
+                fflush(logFd);
+            }
 #ifdef XP_UNIX
             kill(data->pid, SIGTERM);
 #else
@@ -336,24 +379,45 @@ void FcgiProcess::terminateChilds() {
     } //for
 
 #ifdef XP_UNIX
-    PR_Sleep(PR_SecondsToInterval(1));
-    int status = -1;
-    for(i=0; i<len; i++) {
-        data = getChild(i);
-        if(data) {
-            if(waitpid(data->pid, &status, WNOHANG) <= 0) { //child is still active
-                //send KILL signal
-                if(verboseSet) {
-                    fprintf(logFd, "killing child - %d\n", data->pid);
-                    fflush(logFd);
+    if (len > 0) {
+        int status = -1;
+        for (int waitIter = 0; waitIter < 20; waitIter++) {
+            int alive = 0;
+            for (i = 0; i < len; i++) {
+                data = getChild(i);
+                if (data && data->pid > 0) {
+                    pid_t rc = waitpid(data->pid, &status, WNOHANG);
+                    if (rc == data->pid || (rc == -1 && errno == ECHILD)) {
+                        data->pid = -1;
+                    } else {
+                        alive++;
+                    }
                 }
-                kill(data->pid, SIGKILL);
             }
+            if (alive == 0) {
+                break;
+            }
+            PR_Sleep(PR_MillisecondsToInterval(50));
+        }
 
-            delete data;
-            data = NULL;
-        } //if
-    } //for
+        for(i=0; i<len; i++) {
+            data = getChild(i);
+            if(data) {
+                if(data->pid > 0 && waitpid(data->pid, &status, WNOHANG) <= 0) { //child is still active
+                    //send KILL signal
+                    if(verboseSet && logFd) {
+                        fprintf(logFd, "killing child - %d\n", (int)data->pid);
+                        fflush(logFd);
+                    }
+                    kill(data->pid, SIGKILL);
+                    waitpid(data->pid, &status, 0);
+                }
+
+                delete data;
+                data = NULL;
+            } //if
+        } //for
+    }
 #endif //XP_UNIX
 
     if(len > 0) {
@@ -415,18 +479,14 @@ PluginError FcgiProcess::hasAccess() {
 #ifdef XP_UNIX
 static int setrlimitWrapper(int resource, char *data) {
     struct rlimit rl;
-    long limit1;
-    long limit2;
+    PRUint64 limit1;
+    PRUint64 limit2;
     char* end;
-    int rc;
 
     if (!data) return 0; // success, no params to set
 
-    //we don't do the string-to-rlim_t conversion properly when rlim_t is
-    //long long and the numeric values from string won't fit in a long
-
     // get the first number
-    limit1 = strtol(data, &end, 10);
+    limit1 = (PRUint64)strtoull(data, &end, 10);
     if (end == data) return EINVAL; // invalid parameter
 
     // skip past any white space and punctuation
@@ -434,13 +494,13 @@ static int setrlimitWrapper(int resource, char *data) {
     while (*data && (isspace(*data) || ispunct(*data))) data++;
 
     // get the second number
-    limit2 = strtol(data, &end, 10);
+    limit2 = (PRUint64)strtoull(data, &end, 10);
     if (end == data) limit2 = limit1; // no second number given
 
     // rlim_cur is the lesser of limit1 and limit2, rlim_max the greater
     memset(&rl, 0, sizeof(rl));
-    rl.rlim_cur = min(limit1, limit2);
-    rl.rlim_max = max(limit1, limit2);
+    rl.rlim_cur = (rlim_t)min(limit1, limit2);
+    rl.rlim_max = (rlim_t)max(limit1, limit2);
 
     // set params
     if (setrlimit(resource, &rl)) return errno; // failure
@@ -754,40 +814,64 @@ PluginError FcgiProcess::execFcgiProgram(PRBool lifecycleCall) {
     // The call to ExecFcgiProgram will only return once.  It will not
     // return as a result of the child's creation.
     if ( pipe(statusPipe) == -1 ) {
+        if(!lifecycleCall)
+            sendErrorStatus(PIPE_CREATE_FAILURE);
         return PIPE_CREATE_FAILURE;
     }
 
     /* enable close-on-exec to monitor if the exec() worked */
     fcntl(statusPipe[0], F_SETFD, FD_CLOEXEC);
     fcntl(statusPipe[1], F_SETFD, FD_CLOEXEC);    // Fork the fcgi process.
-    fcntl(fileno(logFd), F_SETFD, FD_CLOEXEC);    // On exec, close the log file FD.
+    if (logFd) {
+        fcntl(fileno(logFd), F_SETFD, FD_CLOEXEC);    // On exec, close the log file FD.
+    }
 
     childPid = fork();
     if(childPid < 0) {
+        close(statusPipe[0]);
+        close(statusPipe[1]);
+        if(!lifecycleCall)
+            sendErrorStatus(CHILD_FORK_FAILURE);
         return CHILD_FORK_FAILURE;
     }
 
     if(childPid == 0) {    //child process
         //PR_Close(readPipe);
         close(statusPipe[0]);
-        close(FCGI_LISTENSOCK_FILENO);
         if(serverFd != FCGI_LISTENSOCK_FILENO) {
+            close(FCGI_LISTENSOCK_FILENO);
             dup2(serverFd, FCGI_LISTENSOCK_FILENO);
         }
 
         // Close any file descriptors we may have gotten from the parent
         // process.  The only FD left open is the FCGI listener socket.
-        int     fdlimit;
+        int logFdNum = logFd ? fileno(logFd) : -1;
+        int maxKeepFd = FCGI_LISTENSOCK_FILENO;
+        if (statusPipe[1] > maxKeepFd)
+            maxKeepFd = statusPipe[1];
+        if (logFdNum > maxKeepFd)
+            maxKeepFd = logFdNum;
 
-        // first, close all our potentially nasty inherited fds
-        // leave stdin, stdout & ..err
-
-        fdlimit = sysconf( _SC_OPEN_MAX );
-
-        for(int i=0; i < fdlimit ; i++) {
+        for (int i = 0; i <= maxKeepFd; i++) {
             if ((i != FCGI_LISTENSOCK_FILENO) && (i != statusPipe[1]) &&
-                (i != fileno(logFd)))
-               close(i);
+                (i != logFdNum))
+                close(i);
+        }
+
+        int closed = 0;
+#if defined(Linux) || defined(LINUX)
+        extern int close_range(unsigned int first, unsigned int last, int flags);
+        if (close_range((unsigned int)(maxKeepFd + 1), ~0U, 0) == 0) {
+            closed = 1;
+        }
+#endif
+        if (!closed) {
+            int fdlimit = sysconf(_SC_OPEN_MAX);
+            if (fdlimit < 0 || fdlimit > 65536)
+                fdlimit = 65536;
+            for (int i = maxKeepFd + 1; i < fdlimit; i++) {
+                close(i);
+            }
         }
 
         setupFcgiSignalDisposition();
@@ -816,13 +900,13 @@ PluginError FcgiProcess::execFcgiProgram(PRBool lifecycleCall) {
         close(statusPipe[0]);
         if(!bytesRead) { // pipe was closed on successful exec
             addChild(childPid);
-            if(verboseSet) {
-                fprintf(logFd, "created child - %d\n", childPid);
+            if(verboseSet && logFd) {
+                fprintf(logFd, "created child - %d\n", (int)childPid);
                 fflush(logFd);
             }
         }
 
-        if(!lifecycleCall)
+        if(!lifecycleCall && result != NO_FCGI_ERROR)
             sendErrorStatus(result);
         return result;
     }

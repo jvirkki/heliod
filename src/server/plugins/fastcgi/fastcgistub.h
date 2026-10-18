@@ -187,8 +187,8 @@ typedef struct {
  * sniped from <nss_dbdefs.h>
  * Power-of-two alignments only.
  */
-#define ROUND_DOWN(n, align)    (((long)n) & ~((align) - 1))
-#define ROUND_UP(n, align)  ROUND_DOWN(((long)n) + (align) - 1, (align))
+#define ROUND_DOWN(n, align)    (((size_t)(n)) & ~((size_t)(align) - 1))
+#define ROUND_UP(n, align)  ROUND_DOWN(((size_t)(n)) + (size_t)(align) - 1, (align))
 /* end sniped code */
 
 /* IMPORTANT NOTE :

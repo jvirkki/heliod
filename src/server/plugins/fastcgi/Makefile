@@ -60,6 +60,7 @@ DLL_OBJS=errortypes util fastcgii18n serverconfig fcgirequest fcgiparser serverc
 DLL_OBJS+=server servermanager stubexec baserole fcgirole nsapifastcgi
 util.cpp_CC_FLAGS += -fPIC
 DLL_LIBS=$(DAEMON_DLL) serverxml support libsi18n $(CLIENTLIBS)
+LD_RPATH=$(RPATH_ORIGIN):$(RPATH_ORIGIN)/../lib$(PLATFORM_SUBDIR_SUFFIX):$(RPATH_ORIGIN)/../../lib$(PLATFORM_SUBDIR_SUFFIX):$(RPATH_ORIGIN)/../../../lib$(PLATFORM_SUBDIR_SUFFIX)
 
 ifeq ($(OS_ARCH),WINNT)
 LOCAL_LIBDIRS+=../../../support/libxsd2cpp/$(OBJDIR)
@@ -84,6 +85,7 @@ ifeq ($(OS_ARCH),Linux)
 USE_MAPFILE=
 LOCAL_CC_OPTS += -fPIC
 LOCAL_C_OPTS += -fPIC
+LOCAL_LD_OPTS += -Wl,--disable-new-dtags
 endif
 
 include $(BUILD_ROOT)/make/rules.mk

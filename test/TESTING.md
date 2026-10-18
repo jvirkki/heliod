@@ -410,6 +410,31 @@ and HTTP/2:
   (`401` with `converse()` + `free_resp()`), password-aging warning + Linux
   group membership (`200`), and `PAM_PROMPT_ECHO_OFF` (`200`) over HTTP.  Reuses
   `https-test`.
+- `fastcgi_stub_smoke.sh <work-root>` — FastCGI stub process (`Fastcgistub`)
+  lifecycle, stress, and AddressSanitizer / UndefinedBehaviorSanitizer
+  verification (`plugins/fastcgi/fastcgistub.cpp`, `fcgiprocess.cpp`,
+  `stubexec.cpp`, `serverconfig.cpp`, `nsapifastcgi.cpp`, `util.cpp`).
+  Compiles `Fastcgistub` with `-fsanitize=address,undefined` and a self-contained
+  FastCGI responder binary (`fcgi-test-app`) and runs two phases: (1) direct
+  ASAN/UBSAN protocol and lifecycle stress against `Fastcgistub` covering CLI
+  argument edge cases (no args, missing `-l`, bind-path without `'_'`), socket
+  framing edge cases (empty connection disconnect, short header, invalid
+  version, unknown request type, missing parameters, multi-chunk split
+  `RQ_START` with >30 environment variables exercising `unbuildEnvArray()`
+  resizing), invalid bind paths (empty port, non-numeric port, out-of-range
+  port, overly long UDS path, nonexistent directory) and nonexistent `app-path`,
+  a 16-thread concurrent duplicate `RQ_START` burst (guarding against the
+  `fcgiProcess->createRequest` use-after-free and `connfd` double-close),
+  `RQ_OVERLOAD` scaling, backend child `SIGKILL` and automatic respawn by
+  `childExitHandlerThread()`, `RQ_VS_SHUTDOWN`, and clean `SIGTERM` shutdown
+  (guarding against the double `handleExit()` `PR_Lock(NULL)` crash and
+  signal-handler deadlock); and (2) end-to-end `webservd` + `libfastcgi.so` +
+  ASAN `Fastcgistub` integration across a 20-request concurrent HTTP/1.1 +
+  HTTP/2 cold-start burst, `500` error responses on invalid `bind-path` and
+  missing `app-path` routes without crashing, `kill -9` of all backend children
+  followed by automatic respawn under a 16-request burst, and 3 full
+  `stopserv`/`startserv` server restart cycles verifying clean stub termination
+  and respawn with zero ASAN/UBSAN errors.  Reuses `https-test`.
 
 ## Diagnosing a live HTTP/2 instance
 
@@ -543,6 +568,7 @@ make -C test test-compression   # run compression_smoke.sh (gzip + brotli + zstd
 make -C test test-worker-pool   # run worker_pool_smoke.sh (event pool growth)
 make -C test test-h2-idle       # run h2_idle_timeout_smoke.sh
 make -C test test-fastcgi-h2    # run fastcgi_h2_smoke.sh (needs php-fpm; else SKIPs)
+make -C test test-fastcgi-stub  # run fastcgi_stub_smoke.sh (Fastcgistub lifecycle + ASAN)
 make -C test test-max-requests  # run max_requests_smoke.sh
 make -C test test-range         # run range_smoke.sh (byte-range + Range DoS cap)
 make -C test test-qos           # run qos_smoke.sh (QoS + dynamic reconfig)

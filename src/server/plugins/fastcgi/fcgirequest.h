@@ -59,7 +59,7 @@ public:
     PRBool hasContentLength() const { return _hasContentLength; }
     PRBool isHead() const { return _isHead; }
     char *getFilterApp() { return filterApp; }
-    PRFileInfo& getFilterFileInfo() { return filterFileInfo; }
+    PRFileInfo64& getFilterFileInfo() { return filterFileInfo; }
 
     PRUint64 contentLength;
 
@@ -80,7 +80,7 @@ private:
     Session *_sn;
     Request *_rq;
     char *filterApp;
-    PRFileInfo filterFileInfo;
+    PRFileInfo64 filterFileInfo;
     pblock *_headers;
 };
 

@@ -210,12 +210,22 @@ void terminateStub() {
         pid_t t = -1;
         do {
             t = waitpid(stubPid, &stub_terminated, WNOHANG);
-            if (t != stubPid) {
-                PR_Sleep(PR_SecondsToInterval(1));
-                wait_count++;
+            if (t == stubPid) {
+                break;
             }
-        } while ((t != stubPid) && (wait_count < 10)); 
-        log_error(LOG_VERBOSE, "clean", NULL, NULL, "waited for approximately %d secs for the Fastcgistub process to terminate", wait_count);
+            if (t == -1 && errno == ECHILD) {
+                if (kill(stubPid, 0) == -1 && errno == ESRCH) {
+                    break;
+                }
+            }
+            PR_Sleep(PR_MillisecondsToInterval(100));
+            wait_count++;
+        } while (wait_count < 100);
+        if (wait_count >= 100 && kill(stubPid, 0) == 0) {
+            kill(stubPid, SIGKILL);
+            waitpid(stubPid, &stub_terminated, WNOHANG);
+        }
+        log_error(LOG_VERBOSE, "clean", NULL, NULL, "waited for approximately %d ms for the Fastcgistub process to terminate", wait_count * 100);
 #endif //XP_WIN32
     }
     if(stubPidFileName) {
@@ -235,6 +245,7 @@ void clean_fastcgi(void *data) {
     //delete the semaphore used for locking the stub pid file
     if(stubSem) {
         Sem_terminate(stubSem);
+        stubSem = NULL;
     }
 
     if(pluginDir) {
@@ -255,23 +266,40 @@ extern "C"
 int NSAPI_PUBLIC init_fastcgi(pblock *pb, Session *sn, Request *rq) {
     // If this isn't LateInit time...
     if (!conf_is_late_init(pb)) {
-        //create the semaphore to lock the stub pid file
-        char *semName = createSemName();
-        stubSem = Sem_init(semName, 1);
-        FREE(semName);
+        if (!stubSem) {
+            //create the semaphore to lock the stub pid file
+            char *semName = createSemName();
+            stubSem = Sem_init(semName, 1);
+            FREE(semName);
 
-        // Terminate the stale Fastcgistub process
-        terminateStub();
+            // Terminate the stale Fastcgistub process
+            terminateStub();
+        }
 
         // We want to run during LateInit (after the fork)
         pblock_nvinsert("LateInit", "yes", pb);
         return REQ_PROCEED;
     }
 
+    // We can only be initialized once
+    if (slotServerManager != -1) {
+        ereport(LOG_MISCONFIG, GetString(DBT_init_fastcgi_ignored));
+        return REQ_PROCEED;
+    }
+
     const Configuration *conf = vs_get_conf(request_get_vs(rq));
-    stubLogDir = strdup(conf->log.logFile.getStringValue());
+    const char *logFileStr = (conf && conf->log.logFile.getStringValue()) ? conf->log.logFile.getStringValue() : "../logs/errors";
+    if (stubLogDir) {
+        free(stubLogDir);
+    }
+    stubLogDir = strdup(logFileStr);
     char *stubLogDirEnd = (char *)strrchr(stubLogDir, FILE_PATHSEP);
-    *stubLogDirEnd = '\0';
+    if (stubLogDirEnd) {
+        *stubLogDirEnd = '\0';
+    } else {
+        free(stubLogDir);
+        stubLogDir = strdup(".");
+    }
     ereport(LOG_VERBOSE, "FastCGI plugin's log directory is %s", stubLogDir);
 
     isLateInit = PR_TRUE;
@@ -284,12 +312,6 @@ int NSAPI_PUBLIC init_fastcgi(pblock *pb, Session *sn, Request *rq) {
 
     /* register function to be called at shutdown/restart */
     daemon_atrestart(clean_fastcgi, NULL);
-
-    // We can only be initialized once
-    if (slotServerManager != -1) {
-        ereport(LOG_MISCONFIG, GetString(DBT_init_fastcgi_ignored));
-        return REQ_PROCEED;
-    }
 
     slotServerManager = vs_alloc_slot();
 
@@ -317,9 +339,12 @@ int NSAPI_PUBLIC nsapi_module_init(pblock *pb, Session *sn, Request *rq) {
     char *p = pblock_findval("fastcgistub-path", pb);
 
     if(p) {
-        pluginDir = (char *)PR_Malloc(strlen(p)); 
+        if(pluginDir) {
+            PR_Free(pluginDir);
+        }
+        pluginDir = (char *)PR_Malloc(strlen(p) + 1); 
         strcpy(pluginDir, p); 
-    } else {
+    } else if (!pluginDir) {
         // if user has not specified any path,
         // deduce the stub path from fastcgi library path.
         p = pblock_findval("shlib", pb);

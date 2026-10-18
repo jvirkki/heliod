@@ -57,9 +57,10 @@ FcgiRequest::FcgiRequest(const FcgiServerConfig *config, Session *sn, Request *r
     _hasContentLength = (pblock_find("content-length", _headers) != NULL);
     _hasBody = _hasContentLength || pblock_find("transfer-encoding", _headers);
     _isHead = ISMHEAD(_rq);
-    if(_hasContentLength)
-        contentLength = atoi(pblock_findval(const_cast<char *> ("content-length"), _headers));
-    else
+    if(_hasContentLength) {
+        const char *clVal = pblock_findval(const_cast<char *>("content-length"), _headers);
+        contentLength = clVal ? (PRUint64)strtoull(clVal, NULL, 10) : 0;
+    } else
         contentLength = 0;
 #ifdef SOLARIS
     reqId = ((gethrtime() & 0x000000000000ffff) | 0xf);
@@ -174,7 +175,7 @@ char **FcgiRequest::fcgiSpecificVars(char **env) {
         // be set in the cgi_specific_vars
         char *t = pblock_findval("content-length", _rq->srvhdrs);
         if (t) {
-           int cl = atoi(t);
+           PRInt64 cl = strtoll(t, NULL, 10);
            if (cl > 0)
                env[x++] = util_env_str(const_cast<char *> ("CONTENT_LENGTH"), t);
         }
@@ -192,16 +193,16 @@ char **FcgiRequest::fcgiSpecificVars(char **env) {
     if (fcgiRole == FCGI_FILTER) {
         filterApp = STRDUP(path);
         // set the filter file
-        PRStatus status = PR_GetFileInfo(filterApp, &filterFileInfo);
-        if(filterFileInfo.type != PR_FILE_FILE)
+        PRStatus status = PR_GetFileInfo64(filterApp, &filterFileInfo);
+        if(status != PR_SUCCESS || filterFileInfo.type != PR_FILE_FILE)
             log(LOG_FAILURE, "send-request", "Filter application is not a file (%s)",
                                     path);
         else {
             PRTime lastMod = filterFileInfo.modifyTime;
-            PRUint32 dataSize = filterFileInfo.size;
+            PRUint64 dataSize = (PRUint64)filterFileInfo.size;
             char buf[64];
-            PR_snprintf(buf, 64, "%u", dataSize);
-            env[x++] = util_env_str(const_cast<char *>("FCGI_DATA_LENGTH"), STRDUP(buf));
+            PR_snprintf(buf, 64, "%llu", (unsigned long long)dataSize);
+            env[x++] = util_env_str(const_cast<char *>("FCGI_DATA_LENGTH"), buf);
 
             //calculate last modification time
             //convert microseconds to seconds
@@ -209,7 +210,7 @@ char **FcgiRequest::fcgiSpecificVars(char **env) {
             LL_DIV(lastModTimeInSec, lastMod, PR_USEC_PER_SEC);
             ZERO(buf, 64);
 
-            PR_snprintf(buf, 64, "%u", lastModTimeInSec);
+            PR_snprintf(buf, 64, "%lld", (long long)lastModTimeInSec);
             env[x++] = util_env_str(const_cast<char *>("FCGI_DATA_LAST_MOD"), buf);
         }
     }

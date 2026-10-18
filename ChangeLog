@@ -1,5 +1,55 @@
 2026-10-17  Joe McCabe <joe@jmccabe.org>
 
+        * Bug fix: fix FastCGI stub process (Fastcgistub) crashes, concurrency
+          races, and memory safety defects across spawn, restart, and shutdown
+          (Oracle 12643441).
+
+            Fastcgistub and the FastCGI NSAPI plugin in src/server/plugins/fastcgi/
+            contained multiple lifecycle and memory-safety bugs:
+            - stopStubThread() invoked handleExit() (which destroyed and nulled
+              lockProcessList) while handleExit() was also registered via
+              atexit(), causing a second handleExit() invocation on process exit
+              to pass NULL to PR_Lock(lockProcessList) and crash with SIGSEGV.
+            - cleanStub() invoked stopStubThread() (acquiring locks, joining
+              threads, deleting process objects, and closing files) directly
+              inside the SIGTERM signal handler, and serveRequests() called
+              PR_Close(connFd) on the connFd == NULL branch.  cleanStub() now
+              only sets an atomic stop flag, serveRequests() polls stubFd with
+              a bounded timeout so SIGTERM wakes the accept loop cleanly on the
+              main thread, and handleExit() is idempotent.
+            - Static PR_NewLock() initializers ran before cleanupEnvironment()
+              closed inherited descriptors; locks are now initialized in main()
+              after cleanupEnvironment(), and fd-close loops in both
+              cleanupEnvironment() and FcgiProcess::execFcgiProgram() use
+              close_range() on Linux with a 65536 fallback cap.
+            - FcgiProcess left createRequest uninitialized, handleStartRequest()
+              deleted proc on duplicate RQ_START while processRequest() read
+              fcgiProcess->createRequest after processMessage() returned
+              (use-after-free), and childExitHandlerThread() raced with
+              processRequest() on closing connfd.  Ownership of proc and connfd
+              is now explicitly transferred via keepConnOpen only when a new
+              process is queued for childExitHandlerThread().
+            - processRequest() compared the single-read byte count readlen
+              rather than the cumulative iobufLen against reqMsgLen when framing
+              multi-chunk requests, and loaded untrusted reqMsgType wire values
+              through a C++ enum type.
+            - parseRequest() required RQT_ARGV0 on RQ_OVERLOAD and
+              RQ_VS_SHUTDOWN requests (which StubExec::buildServerRequest() does
+              not send), pre-allocated a non-NULL empty environment array even
+              when RQT_ENVP was absent (wiping the child environment via
+              execve()), and leaked partially populated entries when
+              unbuildEnvArray() resized.
+            - Fixed allocator mismatches (free() vs delete on sockaddr structs,
+              PL_strfree() vs delete on vsIdList strings, new vs PR_NEW on
+              ChildProcessData, delete[] vs delete in CircularBuffer), missing
+              NULL guards on logFd / fcgiStubLogDir / strrchr(stubBindPath, '_'),
+              1-byte under-allocation of pluginDir in nsapi_module_init(),
+              chRoot/chDir copy-constructor leaks/aliasing and operator== result
+              discard in FcgiServerConfig, double-close of writePipe and leaked
+              requestMsg in StubExec, 32-bit file-size/Content-Length/rlimit
+              truncation in FcgiRequest/FilterRole/FcgiProcess, and missing
+              $ORIGIN RPATH on Fastcgistub.
+
         * Bug fix: fix PAM conversation response allocation and free symmetry on
           password-aging and account-expiry paths (Oracle 6911225).
 
